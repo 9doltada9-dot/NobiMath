@@ -1,0 +1,11 @@
+{
+  "name": "Nobi Skill — ฝึกคณิตสนุก!",
+  "short_name": "Nobi Skill",
+  "description": "ฝึกทักษะคณิตศาสตร์สำหรับเด็ก แบบ Kumon + AI Adaptive Learning",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#7c3aed",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait",
+  "icons": []
+}
