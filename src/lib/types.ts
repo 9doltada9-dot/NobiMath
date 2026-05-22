@@ -9,13 +9,52 @@ export interface Profile {
   createdAt: string
 }
 
+// ─── Operations ─────────────────────────────────────────────────────────────
+export type Op = 'add' | 'sub' | 'mul' | 'div'
+
+export interface OpMeta {
+  op: Op
+  symbol: string          // display symbol (＋ − × ÷)
+  name: string            // Thai name
+  emoji: string
+  color: string           // Tailwind gradient classes
+}
+
+export const OP_META: Record<Op, OpMeta> = {
+  add: { op: 'add', symbol: '+', name: 'บวก',  emoji: '➕', color: 'from-violet-500 to-pink-500'   },
+  sub: { op: 'sub', symbol: '−', name: 'ลบ',   emoji: '➖', color: 'from-sky-500 to-indigo-500'    },
+  mul: { op: 'mul', symbol: '×', name: 'คูณ',  emoji: '✖️', color: 'from-amber-500 to-orange-500'  },
+  div: { op: 'div', symbol: '÷', name: 'หาร',  emoji: '➗', color: 'from-emerald-500 to-teal-500'  },
+}
+
+export const ALL_OPS: Op[] = ['add', 'sub', 'mul', 'div']
+
+// ─── Skill Tags (adaptive weak-spot tracking) ──────────────────────────────────
+// Op-namespaced strings, e.g. 'add-d2', 'add-carry', 'sub-borrow', 'mul-d3', 'div-d2'.
+export type SkillTag = string
+
 // ─── Math Problem ─────────────────────────────────────────────────────────────
 export interface Problem {
   a: number
   b: number
   answer: number
   level: number           // Difficulty level (1-10)
+  op?: Op                 // operation (defaults to 'add' for older records)
+  tags?: SkillTag[]       // skill tags for adaptive tracking
+  focusTag?: SkillTag     // set when this problem was generated to drill a weak skill
 }
+
+// ─── Skill Stats (per child, persisted in localStorage) ─────────────────────────
+export interface SkillStat {
+  tag: SkillTag
+  attempts: number
+  correct: number
+  totalTimeSeconds: number
+  recentWrong: number     // recency-weighted wrong counter (decays on correct)
+  lastSeen: string        // ISO timestamp of last attempt
+}
+
+export type SkillStats = Record<string, SkillStat>
 
 // ─── Answer Record ────────────────────────────────────────────────────────────
 export interface AnswerRecord {

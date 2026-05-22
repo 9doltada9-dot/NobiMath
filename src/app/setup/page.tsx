@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AVATARS } from '@/lib/avatars'
 import type { Profile } from '@/lib/types'
+import { saveProfile } from '@/lib/supabase'
 
 // ─── Floating decoration emojis ───────────────────────────────────────────────
 const FLOATERS = ['⭐', '✨', '🌟', '💫', '🎈', '🎉', '⭐', '✨']
@@ -71,9 +72,12 @@ export default function SetupPage() {
 
     localStorage.setItem('nobi_profile', JSON.stringify(profile))
 
+    // Save to Supabase (non-blocking — offline-safe)
+    saveProfile(profile).catch(() => {})
+
     // Small delay for celebration feel
     await new Promise(r => setTimeout(r, 500))
-    router.push('/assessment')
+    router.push('/practice')
   }
 
   return (

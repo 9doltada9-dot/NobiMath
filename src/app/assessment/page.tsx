@@ -12,8 +12,10 @@ import {
   calcAccuracy,
   calcAvgTime,
 } from '@/lib/assessment'
+import { loadSkillStats, saveSkillStats, recordAnswers } from '@/lib/adaptive'
 import { LEVEL_META } from '@/lib/types'
 import type { Profile, Problem, AnswerRecord, AssessmentResult } from '@/lib/types'
+import { saveProfile, saveAssessmentResult } from '@/lib/supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TOTAL_QUESTIONS = 20
@@ -277,6 +279,13 @@ export default function AssessmentPage() {
         if (profile) {
           const updatedProfile = { ...profile, level: determinedLevel }
           localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
+
+          // Seed adaptive skill stats from the assessment so practice starts informed.
+          saveSkillStats(profile.id, recordAnswers(loadSkillStats(profile.id), newAnswers))
+
+          // Save to Supabase (non-blocking — offline-safe)
+          saveAssessmentResult(assessmentResult).catch(() => {})
+          saveProfile(updatedProfile).catch(() => {})
         }
 
         setResult(assessmentResult)
