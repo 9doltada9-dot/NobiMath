@@ -6,7 +6,7 @@ import { motion } from 'framer-motion'
 import { getAvatar } from '@/lib/avatars'
 import { loadLifetime, loadTrophies, getTrophy, TROPHIES } from '@/lib/trophies'
 import { loadSkillStats, getWeakSkills, skillLabel, skillEmoji, accuracyOf } from '@/lib/adaptive'
-import { LEVEL_META, OP_META, ALL_OPS } from '@/lib/types'
+import { LEVEL_META, OP_META, ALL_OPS, opLevel } from '@/lib/types'
 import type { Profile, SessionRecord } from '@/lib/types'
 
 function getGameLevel(exp: number) { return Math.floor(exp / 100) + 1 }
@@ -42,10 +42,6 @@ export default function ProfilePage() {
   const history = loadHistory(profile.id).slice(-20).reverse()
   const streak = parseInt(localStorage.getItem(`nobi_streak_${profile.id}`) ?? '0', 10)
   const overallAcc = life.problems > 0 ? Math.round(life.correct / life.problems * 100) : 0
-
-  // Op breakdown
-  const opSessions = ALL_OPS.map(op => ({ op, count: life.ops[op] ?? 0 }))
-  const maxOpCount = Math.max(1, ...opSessions.map(o => o.count))
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-4">
@@ -100,26 +96,29 @@ export default function ProfilePage() {
           </div>
         </motion.div>
 
-        {/* Op breakdown */}
+        {/* Op level breakdown */}
         <motion.div className="bg-white rounded-3xl shadow-xl p-5 mb-4"
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-          <h2 className="text-sm font-black text-gray-600 mb-3">📊 ฝึกแต่ละ operation</h2>
-          <div className="space-y-2.5">
-            {opSessions.map(({ op, count }) => {
+          <h2 className="text-sm font-black text-gray-600 mb-3">📊 ระดับแต่ละ operation</h2>
+          <div className="space-y-3">
+            {ALL_OPS.map(op => {
               const meta = OP_META[op]
+              const lvl = opLevel(profile, op)
+              const sessionCount = life.ops[op] ?? 0
               return (
                 <div key={op} className="flex items-center gap-3">
                   <span className="text-base w-5 text-center">{meta.emoji}</span>
                   <span className="text-xs font-bold text-gray-500 w-8">{meta.name}</span>
-                  <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
                     <motion.div
                       className={`h-full bg-gradient-to-r ${meta.color} rounded-full`}
                       initial={{ width: 0 }}
-                      animate={{ width: `${(count / maxOpCount) * 100}%` }}
+                      animate={{ width: `${(lvl / 10) * 100}%` }}
                       transition={{ duration: 0.6, delay: 0.15 }}
                     />
                   </div>
-                  <span className="text-xs font-black text-gray-500 tabular-nums w-12 text-right">{count} เซสชั่น</span>
+                  <span className="text-xs font-black text-violet-700 tabular-nums w-10 text-right">Lv.{lvl}</span>
+                  <span className="text-[10px] text-gray-400 tabular-nums w-12 text-right">{sessionCount} ครั้ง</span>
                 </div>
               )
             })}

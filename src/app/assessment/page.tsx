@@ -281,10 +281,16 @@ export default function AssessmentPage() {
         }
         localStorage.setItem('nobi_assessment', JSON.stringify(assessmentResult))
 
-        // Update profile level
+        // Update profile level + per-op levels
         if (profile) {
-          const updatedProfile = { ...profile, level: determinedLevel }
+          const updatedProfile = { ...profile, level: determinedLevel, opLevels: perOpLevels }
           localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
+          // Sync to profiles array
+          try {
+            const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+            const idx = profiles.findIndex(p => p.id === updatedProfile.id)
+            if (idx >= 0) { profiles[idx] = updatedProfile; localStorage.setItem('nobi_profiles', JSON.stringify(profiles)) }
+          } catch { /* ignore */ }
 
           // Seed adaptive skill stats from the assessment so practice starts informed.
           saveSkillStats(profile.id, recordAnswers(loadSkillStats(profile.id), newAnswers))

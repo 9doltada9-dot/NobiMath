@@ -1,16 +1,22 @@
+// ─── Operations ─────────────────────────────────────────────────────────────
+export type Op = 'add' | 'sub' | 'mul' | 'div'
+
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export interface Profile {
   id: string
   nickname: string
   age: number
   avatar: string          // Avatar id
-  level: number           // Current working level (1-10)
+  level: number           // Overall level (1-10), used as fallback
   totalExp: number
   createdAt: string
+  opLevels?: Partial<Record<Op, number>>  // Per-operation levels, set by assessment & auto-adjusted
 }
 
-// ─── Operations ─────────────────────────────────────────────────────────────
-export type Op = 'add' | 'sub' | 'mul' | 'div'
+/** Returns the effective practice level for a given op (falls back to profile.level) */
+export function opLevel(profile: Profile, op: Op): number {
+  return profile.opLevels?.[op] ?? profile.level
+}
 
 export interface OpMeta {
   op: Op

@@ -13,7 +13,7 @@ git add -A
 
 echo.
 echo [2/3] git commit ...
-git commit -m "Phase 1+2: history page, profile link, Supabase edge function, Gemini AI feedback"
+git commit -m "Phase 3: per-operation level tracking + auto-adjust + AI feedback complete"
 
 echo.
 echo [3/3] git push ...

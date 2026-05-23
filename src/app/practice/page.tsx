@@ -15,7 +15,7 @@ import {
   skillLabel,
   skillEmoji,
 } from '@/lib/adaptive'
-import { LEVEL_META, OP_META, ALL_OPS } from '@/lib/types'
+import { LEVEL_META, OP_META, ALL_OPS, opLevel } from '@/lib/types'
 import type { Profile, Problem, AnswerRecord, PracticeSession, SkillStats, Op, SessionRecord } from '@/lib/types'
 import {
   applySession,
@@ -186,7 +186,7 @@ function DashboardScreen({
 
           <div className="grid grid-cols-3 gap-2.5 mb-4">
             {[
-              { label: 'ระดับคณิต', value: `${profile.level}/10`, emoji: '📊' },
+              { label: `ระดับ${OP_META[selectedOp].name}`, value: `${opLevel(profile, selectedOp)}/10`, emoji: OP_META[selectedOp].emoji },
               { label: 'EXP รวม',   value: `${profile.totalExp}`, emoji: '⚡' },
               { label: 'Streak',    value: `${streak} วัน`,        emoji: '🔥' },
             ].map(stat => (
@@ -332,8 +332,9 @@ function PracticeScreen({
 }) {
   // Live skill stats updated within the session so later questions adapt too.
   const liveStatsRef = useRef<SkillStats>(initialStats)
+  const currentOpLevel = opLevel(profile, op)
   const [problem, setProblem] = useState<Problem>(() =>
-    generateAdaptiveProblem(op, profile.level, initialStats),
+    generateAdaptiveProblem(op, currentOpLevel, initialStats),
   )
   const [questionIndex, setQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
@@ -380,7 +381,7 @@ function PracticeScreen({
       if (questionIndex + 1 >= TOTAL_QUESTIONS) {
         onFinish(newAnswers)
       } else {
-        setProblem(generateAdaptiveProblem(op, profile.level, liveStatsRef.current))
+        setProblem(generateAdaptiveProblem(op, currentOpLevel, liveStatsRef.current))
         setQuestionIndex(qi => qi + 1)
         setTimeElapsed(0)
         startTimeRef.current = Date.now()
@@ -444,7 +445,7 @@ function PracticeScreen({
           />
         </div>
         <div className="flex justify-between text-white/70 text-xs font-bold">
-          <span>{'ระดับ'} {profile.level}/10</span>
+          <span>{'ระดับ'} {currentOpLevel}/10</span>
           <span>{'⚡'} +{correctSoFar * EXP_PER_CORRECT} EXP</span>
         </div>
       </div>
@@ -556,8 +557,11 @@ function PracticeScreen({
 function ResultScreen({
   profile,
   answers,
+  op,
   expGained,
   leveledUp,
+  opLeveledUp,
+  opLeveledDown,
   unlockedTrophyIds,
   aiFeedback,
   aiFeedbackLoading,
@@ -566,8 +570,11 @@ function ResultScreen({
 }: {
   profile: Profile
   answers: AnswerRecord[]
+  op: Op
   expGained: number
   leveledUp: boolean
+  opLeveledUp: boolean
+  opLeveledDown: boolean
   unlockedTrophyIds: string[]
   aiFeedback: AIFeedback | null
   aiFeedbackLoading: boolean
@@ -625,6 +632,32 @@ function ResultScreen({
               </motion.div>
               <p className="text-yellow-700 font-black text-base">Game Level Up!</p>
               <p className="text-yellow-500 text-sm font-semibold">{'เก่งมากเลย ขึ้นเลเวลแล้ว'}!</p>
+            </motion.div>
+          )}
+
+          {opLeveledUp && (
+            <motion.div
+              className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 mb-4 text-center"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.55, type: 'spring' }}
+            >
+              <p className="text-emerald-700 font-black text-sm">
+                {OP_META[op].emoji} ระดับ{OP_META[op].name}เพิ่มขึ้น → Lv.{opLevel(profile, op)} 🚀
+              </p>
+            </motion.div>
+          )}
+
+          {opLeveledDown && (
+            <motion.div
+              className="bg-orange-50 border-2 border-orange-200 rounded-2xl p-3 mb-4 text-center"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.55, type: 'spring' }}
+            >
+              <p className="text-orange-600 font-black text-sm">
+                {OP_META[op].emoji} ปรับระดับ{OP_META[op].name}ลง → Lv.{opLevel(profile, op)} 💪 ฝึกต่อไปนะ!
+              </p>
             </motion.div>
           )}
 
@@ -862,6 +895,8 @@ export default function PracticePage() {
   const [justUnlocked, setJustUnlocked] = useState<string[]>([])
   const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null)
   const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false)
+  const [opLeveledUp, setOpLeveledUp] = useState(false)
+  const [opLeveledDown, setOpLeveledDown] = useState(false)
 
   useEffect(() => {
     const rawProfile = localStorage.getItem('nobi_profile')
@@ -881,12 +916,20 @@ export default function PracticePage() {
 
     const correctCount = answers.filter(a => a.isCorrect).length
     const earned = correctCount * EXP_PER_CORRECT
+    const accuracy = calcAccuracy(answers)
     const oldGameLevel = getGameLevel(profile.totalExp)
     const newTotalExp = profile.totalExp + earned
     const newGameLevel = getGameLevel(newTotalExp)
     const didLevelUp = newGameLevel > oldGameLevel
 
-    const updatedProfile: Profile = { ...profile, totalExp: newTotalExp }
+    // Auto-adjust op level based on performance
+    const curOpLevel = opLevel(profile, selectedOp)
+    let nextOpLevel = curOpLevel
+    if (accuracy >= 90 && calcAvgTime(answers) < 10) nextOpLevel = Math.min(10, curOpLevel + 1)
+    else if (accuracy < 50) nextOpLevel = Math.max(1, curOpLevel - 1)
+    const newOpLevels = { ...(profile.opLevels ?? {}), [selectedOp]: nextOpLevel }
+
+    const updatedProfile: Profile = { ...profile, totalExp: newTotalExp, opLevels: newOpLevels }
     localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
     // Sync to profiles array
     try {
@@ -895,7 +938,6 @@ export default function PracticePage() {
       if (idx >= 0) { profiles[idx] = updatedProfile; localStorage.setItem('nobi_profiles', JSON.stringify(profiles)) }
     } catch { /* ignore */ }
 
-    const accuracy = calcAccuracy(answers)
     localStorage.setItem('nobi_last_session', JSON.stringify({ accuracy, expGained: earned }))
 
     // Update adaptive skill stats from this session's answers.
@@ -969,6 +1011,8 @@ export default function PracticePage() {
     setSessionAnswers(answers)
     setExpGained(earned)
     setLeveledUp(didLevelUp)
+    setOpLeveledUp(nextOpLevel > curOpLevel)
+    setOpLeveledDown(nextOpLevel < curOpLevel)
     setAiFeedback(null)
     setScreen('result')
 
@@ -1017,13 +1061,16 @@ export default function PracticePage() {
       <ResultScreen
         profile={profile}
         answers={sessionAnswers}
+        op={selectedOp}
         expGained={expGained}
         leveledUp={leveledUp}
+        opLeveledUp={opLeveledUp}
+        opLeveledDown={opLeveledDown}
         unlockedTrophyIds={justUnlocked}
         aiFeedback={aiFeedback}
         aiFeedbackLoading={aiFeedbackLoading}
-        onPlayAgain={() => { setAiFeedback(null); setScreen('practice') }}
-        onHome={() => { setAiFeedback(null); setScreen('dashboard') }}
+        onPlayAgain={() => { setAiFeedback(null); setOpLeveledUp(false); setOpLeveledDown(false); setScreen('practice') }}
+        onHome={() => { setAiFeedback(null); setOpLeveledUp(false); setOpLeveledDown(false); setScreen('dashboard') }}
       />
     )
   }
