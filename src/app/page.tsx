@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { getAvatar } from '@/lib/avatars'
 import { loadLifetime } from '@/lib/trophies'
 import { loadTrophies, TROPHIES } from '@/lib/trophies'
 import { LEVEL_META } from '@/lib/types'
 import type { Profile } from '@/lib/types'
+import { getAuthUser, authSignOut } from '@/lib/auth'
+import { fullSync } from '@/lib/sync'
+import type { AuthUser } from '@/lib/auth'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
 
@@ -23,15 +26,14 @@ export default function HomePage() {
   const router = useRouter()
   const [cards, setCards] = useState<ProfileCardData[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
-  useEffect(() => {
-    // ─── Load all profiles ────────────────────────────────────────────────
+  const buildCards = useCallback(() => {
     let profiles: Profile[] = []
-
     const raw = localStorage.getItem('nobi_profiles')
-    if (raw) {
-      try { profiles = JSON.parse(raw) } catch { profiles = [] }
-    }
+    if (raw) { try { profiles = JSON.parse(raw) } catch { profiles = [] } }
 
     // Backward-compat: single profile from older version
     if (profiles.length === 0) {
@@ -45,13 +47,6 @@ export default function HomePage() {
       }
     }
 
-    if (profiles.length === 0) {
-      // No profiles at all → go to setup
-      router.replace('/setup')
-      return
-    }
-
-    // ─── Load stats for each profile ─────────────────────────────────────
     const data: ProfileCardData[] = profiles.map(p => {
       const life = loadLifetime(p.id)
       const trophies = loadTrophies(p.id)
@@ -62,10 +57,61 @@ export default function HomePage() {
       const streak = parseInt(localStorage.getItem(`nobi_streak_${p.id}`) ?? '0', 10)
       return { profile: p, sessions: life.sessions, accuracy, trophyCount, streak }
     })
+    return { profiles, data }
+  }, [])
 
+  useEffect(() => {
+    async function init() {
+      // Check auth
+      const user = await getAuthUser()
+      setAuthUser(user)
+
+      const { profiles, data } = buildCards()
+
+      if (profiles.length === 0) {
+        router.replace('/setup')
+        return
+      }
+
+      setCards(data)
+      setLoaded(true)
+
+      // Auto-sync if logged in
+      if (user) {
+        setSyncing(true)
+        const result = await fullSync(user.id)
+        // Rebuild cards after pull (may have new profiles from other devices)
+        const { data: freshData } = buildCards()
+        setCards(freshData)
+        setSyncing(false)
+        if (result.profilesPulled > 0) {
+          setSyncMsg(`☁️ ซิงค์แล้ว (${result.profilesPulled} โปรไฟล์)`)
+          setTimeout(() => setSyncMsg(null), 3000)
+        }
+      }
+    }
+    init()
+  }, [router, buildCards])
+
+  async function handleSync() {
+    if (!authUser || syncing) return
+    setSyncing(true)
+    setSyncMsg(null)
+    const result = await fullSync(authUser.id)
+    const { data } = buildCards()
     setCards(data)
-    setLoaded(true)
-  }, [router])
+    setSyncing(false)
+    setSyncMsg(`✅ ซิงค์สำเร็จ (${result.profilesPulled} โปรไฟล์จาก Cloud)`)
+    setTimeout(() => setSyncMsg(null), 3000)
+  }
+
+  async function handleLogout() {
+    await authSignOut()
+    localStorage.removeItem('nobi_auth_email')
+    setAuthUser(null)
+    setSyncMsg('ออกจากระบบแล้ว')
+    setTimeout(() => setSyncMsg(null), 2000)
+  }
 
   function selectProfile(profile: Profile) {
     localStorage.setItem('nobi_active_profile', profile.id)
@@ -73,9 +119,7 @@ export default function HomePage() {
     router.push('/practice')
   }
 
-  function addNew() {
-    router.push('/setup')
-  }
+  function addNew() { router.push('/setup') }
 
   if (!loaded) {
     return (
@@ -87,17 +131,70 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-4">
-      <div className="max-w-lg mx-auto pt-6 pb-8">
+      <div className="max-w-lg mx-auto pt-4 pb-8">
 
-        {/* Header */}
+        {/* Auth bar */}
         <motion.div
-          className="text-center mb-6"
-          initial={{ opacity: 0, y: -20 }}
+          className="flex items-center justify-between mb-5"
+          initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="text-white font-black text-2xl mb-1">🎓 Nobi Skill</h1>
-          <p className="text-white/70 text-sm font-semibold">เลือกผู้ฝึกเพื่อเริ่มได้เลย</p>
+          <h1 className="text-white font-black text-xl">🎓 Nobi Skill</h1>
+          <div className="flex items-center gap-2">
+            {authUser ? (
+              <>
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="bg-white/20 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl hover:bg-white/30 transition-colors disabled:opacity-50"
+                >
+                  {syncing ? '⏳' : '☁️'} ซิงค์
+                </button>
+                <div className="bg-white/20 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
+                  <span className="text-base">👤</span>
+                  <div>
+                    <p className="text-white text-[10px] font-black leading-none truncate max-w-[80px]">
+                      {authUser.email.split('@')[0]}
+                    </p>
+                    <button
+                      onClick={handleLogout}
+                      className="text-white/60 text-[9px] font-bold hover:text-white/90 transition-colors"
+                    >
+                      ออกจากระบบ
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <button
+                onClick={() => router.push('/login')}
+                className="bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-white/30 transition-colors flex items-center gap-1"
+              >
+                ☁️ เข้าสู่ระบบ
+              </button>
+            )}
+          </div>
         </motion.div>
+
+        {/* Sync message toast */}
+        <AnimatePresence>
+          {syncMsg && (
+            <motion.div
+              className="bg-white/20 text-white text-xs font-bold px-4 py-2 rounded-2xl text-center mb-3"
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            >
+              {syncMsg}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Sub-header */}
+        <motion.p
+          className="text-white/70 text-sm font-semibold text-center mb-5"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
+        >
+          เลือกผู้ฝึกเพื่อเริ่มได้เลย
+        </motion.p>
 
         {/* Profile cards */}
         <div className="space-y-3 mb-4">

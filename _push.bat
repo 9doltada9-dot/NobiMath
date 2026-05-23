@@ -13,7 +13,7 @@ git add -A
 
 echo.
 echo [2/3] git commit ...
-git commit -m "Phase 1-3 complete: assessment, history chart, per-op levels, AI feedback, setup fix, assessment links"
+git commit -m "Phase 4: multi-user auth + cloud sync (Supabase Auth, login page, fullSync, RLS migration)"
 
 echo.
 echo [3/3] git push ...

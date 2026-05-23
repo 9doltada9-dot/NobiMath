@@ -29,6 +29,8 @@ import {
   type UnlockedMap,
 } from '@/lib/trophies'
 import { saveProfile, savePracticeSession, callAnalyzeSession } from '@/lib/supabase'
+import { getAuthUser } from '@/lib/auth'
+import { pushSession } from '@/lib/sync'
 import type { AIFeedback } from '@/lib/types'
 
 const TOTAL_QUESTIONS = 10
@@ -986,7 +988,7 @@ export default function PracticePage() {
     // Save to local session history
     const histKey = `nobi_history_${profile.id}`
     const hist: SessionRecord[] = JSON.parse(localStorage.getItem(histKey) ?? '[]')
-    hist.push({
+    const newRecord: SessionRecord = {
       id: `s_${Date.now()}`,
       date: new Date().toISOString(),
       op: selectedOp,
@@ -996,8 +998,14 @@ export default function PracticePage() {
       avgTimeSeconds: calcAvgTime(answers),
       expGained: earned,
       level: profile.level,
-    })
+    }
+    hist.push(newRecord)
     localStorage.setItem(histKey, JSON.stringify(hist.slice(-100)))
+
+    // Push session to cloud if logged in (non-blocking)
+    getAuthUser().then(user => {
+      if (user) pushSession(newRecord, profile.id, user.id).catch(() => {})
+    })
 
     // Lifetime stats + trophy unlocks.
     const life = applySession(loadLifetime(profile.id), answers, selectedOp, streak)

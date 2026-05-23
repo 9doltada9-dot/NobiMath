@@ -18,17 +18,20 @@ export const supabase = isConfigured()
   ? createClient(supabaseUrl, supabaseKey)
   : (null as unknown as ReturnType<typeof createClient>)
 
-export async function saveProfile(profile: Profile): Promise<void> {
+export async function saveProfile(profile: Profile, userId?: string): Promise<void> {
   if (!isConfigured()) return
   try {
     await supabase.from('profiles').upsert({
       id: profile.id,
+      user_id: userId ?? null,
       nickname: profile.nickname,
       age: profile.age,
       avatar: profile.avatar,
       level: profile.level,
       total_exp: profile.totalExp,
+      op_levels: profile.opLevels ?? {},
       created_at: profile.createdAt,
+      updated_at: new Date().toISOString(),
     })
   } catch (e) {
     console.warn('[Supabase] saveProfile failed:', e)

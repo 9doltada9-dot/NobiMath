@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { AVATARS } from '@/lib/avatars'
 import type { Profile } from '@/lib/types'
 import { saveProfile } from '@/lib/supabase'
+import { getAuthUser } from '@/lib/auth'
 
 // ─── Floating decoration emojis ───────────────────────────────────────────────
 const FLOATERS = ['⭐', '✨', '🌟', '💫', '🎈', '🎉', '⭐', '✨']
@@ -75,8 +76,10 @@ export default function SetupPage() {
     profiles.push(profile)
     localStorage.setItem('nobi_profiles', JSON.stringify(profiles))
 
-    // Save to Supabase (non-blocking — offline-safe)
-    saveProfile(profile).catch(() => {})
+    // Save to Supabase with user_id if logged in (non-blocking — offline-safe)
+    getAuthUser().then(user => {
+      saveProfile(profile, user?.id).catch(() => {})
+    })
 
     // Small delay for celebration feel
     await new Promise(r => setTimeout(r, 500))
