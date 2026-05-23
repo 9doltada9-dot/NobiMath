@@ -1,5 +1,5 @@
 // ─── Operations ─────────────────────────────────────────────────────────────
-export type Op = 'add' | 'sub' | 'mul' | 'div'
+export type Op = 'add' | 'sub' | 'mul' | 'div' | 'times_table' | 'fraction' | 'decimal'
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 export interface Profile {
@@ -27,13 +27,18 @@ export interface OpMeta {
 }
 
 export const OP_META: Record<Op, OpMeta> = {
-  add: { op: 'add', symbol: '+', name: 'บวก',  emoji: '➕', color: 'from-violet-500 to-pink-500'   },
-  sub: { op: 'sub', symbol: '−', name: 'ลบ',   emoji: '➖', color: 'from-sky-500 to-indigo-500'    },
-  mul: { op: 'mul', symbol: '×', name: 'คูณ',  emoji: '✖️', color: 'from-amber-500 to-orange-500'  },
-  div: { op: 'div', symbol: '÷', name: 'หาร',  emoji: '➗', color: 'from-emerald-500 to-teal-500'  },
+  add:         { op: 'add',         symbol: '+',  name: 'บวก',     emoji: '➕', color: 'from-violet-500 to-pink-500'   },
+  sub:         { op: 'sub',         symbol: '−',  name: 'ลบ',      emoji: '➖', color: 'from-sky-500 to-indigo-500'    },
+  mul:         { op: 'mul',         symbol: '×',  name: 'คูณ',     emoji: '✖️', color: 'from-amber-500 to-orange-500'  },
+  div:         { op: 'div',         symbol: '÷',  name: 'หาร',     emoji: '➗', color: 'from-emerald-500 to-teal-500'  },
+  times_table: { op: 'times_table', symbol: '×',  name: 'สูตรคูณ', emoji: '📊', color: 'from-yellow-500 to-amber-500' },
+  fraction:    { op: 'fraction',    symbol: '½',  name: 'เศษส่วน', emoji: '🔣', color: 'from-rose-500 to-pink-500'    },
+  decimal:     { op: 'decimal',     symbol: '0.', name: 'ทศนิยม',  emoji: '🔢', color: 'from-cyan-500 to-blue-500'    },
 }
 
-export const ALL_OPS: Op[] = ['add', 'sub', 'mul', 'div']
+export const ALL_OPS: Op[] = ['add', 'sub', 'mul', 'div', 'times_table', 'fraction', 'decimal']
+export const BASIC_OPS: Op[] = ['add', 'sub', 'mul', 'div']
+export const ADVANCED_OPS: Op[] = ['times_table', 'fraction', 'decimal']
 
 // ─── Skill Tags (adaptive weak-spot tracking) ──────────────────────────────────
 // Op-namespaced strings, e.g. 'add-d2', 'add-carry', 'sub-borrow', 'mul-d3', 'div-d2'.
@@ -48,6 +53,8 @@ export interface Problem {
   op?: Op                 // operation (defaults to 'add' for older records)
   tags?: SkillTag[]       // skill tags for adaptive tracking
   focusTag?: SkillTag     // set when this problem was generated to drill a weak skill
+  denominator?: number    // fraction: common denominator (e.g. 4 for quarters)
+  displayScale?: number   // decimal: divide a,b,answer by this to display (10=tenths, 100=hundredths)
 }
 
 // ─── Skill Stats (per child, persisted in localStorage) ─────────────────────────

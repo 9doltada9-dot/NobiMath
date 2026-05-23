@@ -30,6 +30,7 @@ export default function HomePage() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [reminderNames, setReminderNames] = useState<string[]>([])
 
   const buildCards = useCallback(() => {
     let profiles: Profile[] = []
@@ -76,6 +77,13 @@ export default function HomePage() {
 
       setCards(data)
       setLoaded(true)
+
+      // Check daily reminder: find profiles that haven't practiced today
+      const today = new Date().toDateString()
+      const missing = profiles
+        .filter(p => localStorage.getItem(`nobi_last_practice_date_${p.id}`) !== today)
+        .map(p => p.nickname)
+      setReminderNames(missing)
 
       // Auto-sync if logged in
       if (user) {
@@ -177,6 +185,20 @@ export default function HomePage() {
           </div>
         </motion.div>
 
+        {/* Daily reminder banner */}
+        <AnimatePresence>
+          {reminderNames.length > 0 && (
+            <motion.div
+              className="bg-amber-400/90 text-amber-900 text-xs font-black px-4 py-2.5 rounded-2xl text-center mb-3 flex items-center justify-center gap-2"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+            >
+              🔔 {reminderNames.join(', ')} ยังไม่ได้ฝึกวันนี้เลย! มาฝึกกันเถอะ 💪
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Sync message toast */}
         <AnimatePresence>
           {syncMsg && (
@@ -276,6 +298,27 @@ export default function HomePage() {
             )
           })}
         </div>
+
+        {/* Quick nav row: Parent & Leaderboard */}
+        <motion.div
+          className="grid grid-cols-2 gap-3 mb-3"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: cards.length * 0.08 + 0.05 }}
+        >
+          <button
+            onClick={() => router.push('/parent')}
+            className="bg-white/20 border border-white/30 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/30 transition-colors text-sm"
+          >
+            👨‍👩‍👧 รายงานผู้ปกครอง
+          </button>
+          <button
+            onClick={() => router.push('/leaderboard')}
+            className="bg-white/20 border border-white/30 text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/30 transition-colors text-sm"
+          >
+            🏆 Leaderboard
+          </button>
+        </motion.div>
 
         {/* Add new profile */}
         <motion.button

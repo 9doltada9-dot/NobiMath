@@ -58,12 +58,15 @@ export function hasBorrow(a: number, b: number): boolean {
 }
 
 // ─── Tagging ────────────────────────────────────────────────────────────────
-export function tagProblem(op: Op, a: number, b: number): SkillTag[] {
+export function tagProblem(op: Op, a: number, b: number, denom?: number): SkillTag[] {
   switch (op) {
     case 'add': return [`add-d${digits(Math.max(a, b))}`, hasCarry(a, b) ? 'add-carry' : 'add-nocarry']
     case 'sub': return [`sub-d${digits(a)}`, hasBorrow(a, b) ? 'sub-borrow' : 'sub-noborrow']
     case 'mul': return [`mul-d${digits(Math.max(a, b))}`]
     case 'div': return [`div-d${digits(a)}`]
+    case 'times_table': return [`times_table-t${Math.min(a, b)}`]
+    case 'fraction': return [`fraction-d${denom ?? Math.max(a, b)}`]
+    case 'decimal': return [`decimal-tenths`]
   }
 }
 
@@ -73,6 +76,9 @@ export function answerOf(op: Op, a: number, b: number): number {
     case 'sub': return a - b
     case 'mul': return a * b
     case 'div': return Math.floor(a / b)
+    case 'times_table': return a * b
+    case 'fraction': return a + b  // numerator sum (denominator kept separately)
+    case 'decimal': return a + b   // scaled integer sum
   }
 }
 
@@ -159,11 +165,55 @@ function genDiv(level: number, rng: RNG): [number, number] {
   return [a, b]
 }
 
+// ─── Times Table (12×12 drill) ───────────────────────────────────────────────
+
+function genTimesTable(level: number, rng: RNG): [number, number] {
+  // Each level focuses on specific multiplication tables
+  const tableRanges: Record<number, [number, number]> = {
+    1: [2, 3], 2: [3, 4], 3: [4, 5], 4: [5, 6],  5: [6, 7],
+    6: [7, 8], 7: [8, 9], 8: [9, 10], 9: [10, 11], 10: [11, 12],
+  }
+  const [lo, hi] = tableRanges[level] ?? [2, 12]
+  const a = rand(lo, hi, rng)
+  const b = rand(1, 12, rng)
+  return [a, b]
+}
+
+// ─── Fractions (same-denominator addition) ───────────────────────────────────
+
+function genFraction(level: number, rng: RNG): { a: number; b: number; d: number } {
+  const denoms = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20]
+  const d = denoms[Math.min(level - 1, denoms.length - 1)]
+  const a = rand(1, d - 1, rng)
+  const b = rand(1, d - 1, rng)
+  return { a, b, d }
+}
+
+// ─── Decimals (tenths / hundredths) ─────────────────────────────────────────
+
+function genDecimal(level: number, rng: RNG): { a: number; b: number; scale: number } {
+  if (level <= 5) {
+    // tenths: e.g. 1.5 + 0.7 stored as a=15, b=7, scale=10
+    return { a: rand(1, 19, rng), b: rand(1, 19, rng), scale: 10 }
+  }
+  // hundredths: e.g. 1.25 + 0.38 stored as a=125, b=38, scale=100
+  return { a: rand(1, 199, rng), b: rand(1, 199, rng), scale: 100 }
+}
+
 /** Generate a level-appropriate problem for the given operation. */
 export function generateProblem(op: Op, level: number, rng: RNG = Math.random): Problem {
+  if (op === 'fraction') {
+    const { a, b, d } = genFraction(level, rng)
+    return { a, b, answer: a + b, level, op, tags: tagProblem(op, a, b, d), denominator: d }
+  }
+  if (op === 'decimal') {
+    const { a, b, scale } = genDecimal(level, rng)
+    return { a, b, answer: a + b, level, op, tags: tagProblem(op, a, b), displayScale: scale }
+  }
   const [a, b] = op === 'add' ? genAdd(level, rng)
     : op === 'sub' ? genSub(level, rng)
     : op === 'mul' ? genMul(level, rng)
+    : op === 'times_table' ? genTimesTable(level, rng)
     : genDiv(level, rng)
   return makeProblem(op, a, b, level)
 }
@@ -226,8 +276,25 @@ function subDigitsForLevel(level: number): { a: number; b: number } {
  * carry/borrow constraint can't be satisfied within the sampling budget.
  */
 export function generateForTag(tag: SkillTag, level: number, rng: RNG = Math.random): Problem | null {
-  const op = opOfTag(tag)
+  const op = opOfTag(tag) as Op
   const rest = tag.slice(tag.indexOf('-') + 1)
+
+  // ─── New ops ────────────────────────────────────────────────────────────────
+  if (op === 'times_table') {
+    const n = parseInt(rest.slice(1), 10) || 2
+    const b = rand(1, 12, rng)
+    return { a: n, b, answer: n * b, level, op, tags: [`times_table-t${n}`] }
+  }
+  if (op === 'fraction') {
+    const d = parseInt(rest.slice(1), 10) || 4
+    const a = rand(1, d - 1, rng)
+    const b = rand(1, d - 1, rng)
+    return { a, b, answer: a + b, level, op, tags: [`fraction-d${d}`], denominator: d }
+  }
+  if (op === 'decimal') {
+    const { a, b, scale } = genDecimal(level, rng)
+    return { a, b, answer: a + b, level, op, tags: [`decimal-tenths`], displayScale: scale }
+  }
 
   if (rest === 'carry' || rest === 'nocarry') {
     const want = rest === 'carry'
@@ -265,19 +332,26 @@ export function generateForTag(tag: SkillTag, level: number, rng: RNG = Math.ran
 
 // ─── Friendly Thai labels for a tag (used in the UI) ────────────────────────────
 export function skillEmoji(tag: SkillTag): string {
-  return OP_META[opOfTag(tag)]?.emoji ?? '🔢'
+  return OP_META[opOfTag(tag) as Op]?.emoji ?? '🔢'
 }
 
 export function skillLabel(tag: SkillTag): string {
-  const op = opOfTag(tag)
+  const op = opOfTag(tag) as Op
   const name = OP_META[op]?.name ?? ''
   const rest = tag.slice(tag.indexOf('-') + 1)
   if (rest === 'carry') return `${name}แบบมีทด`
   if (rest === 'nocarry') return `${name}แบบไม่มีทด`
   if (rest === 'borrow') return `${name}แบบมียืม`
   if (rest === 'noborrow') return `${name}แบบไม่มียืม`
+  if (rest === 'tenths') return `${name} 1 ตำแหน่ง`
+  if (rest === 'hundredths') return `${name} 2 ตำแหน่ง`
+  if (rest[0] === 't') {
+    const n = parseInt(rest.slice(1), 10) || 2
+    return `สูตรคูณแม่ ${n}`
+  }
   if (rest[0] === 'd') {
     const n = parseInt(rest.slice(1), 10) || 1
+    if (op === 'fraction') return `${name}ส่วน ${n}`
     return n >= 4 ? `${name}เลขหลายหลัก` : `${name}เลข ${n} หลัก`
   }
   return name

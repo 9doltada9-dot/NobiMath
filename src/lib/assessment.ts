@@ -20,8 +20,8 @@ export function generateProblem(level: number, questionIndex = 0): Problem {
 }
 
 // ─── Per-operation final levels ────────────────────────────────────────────────
-export function calculatePerOpLevels(answers: AnswerRecord[]): Record<Op, number> {
-  const result: Record<Op, number> = { add: 1, sub: 1, mul: 1, div: 1 }
+export function calculatePerOpLevels(answers: AnswerRecord[]): Partial<Record<Op, number>> {
+  const result: Partial<Record<Op, number>> = { add: 1, sub: 1, mul: 1, div: 1 }
   ASSESSMENT_PHASES.forEach(({ op }, pi) => {
     const slice = answers.slice(pi * QUESTIONS_PER_PHASE, (pi + 1) * QUESTIONS_PER_PHASE)
     if (slice.length === 0) return

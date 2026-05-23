@@ -15,7 +15,7 @@ import {
   skillLabel,
   skillEmoji,
 } from '@/lib/adaptive'
-import { LEVEL_META, OP_META, ALL_OPS, opLevel } from '@/lib/types'
+import { LEVEL_META, OP_META, BASIC_OPS, ADVANCED_OPS, opLevel } from '@/lib/types'
 import type { Profile, Problem, AnswerRecord, PracticeSession, SkillStats, Op, SessionRecord } from '@/lib/types'
 import {
   applySession,
@@ -53,33 +53,36 @@ function Numpad({
   onChange,
   onSubmit,
   disabled,
+  hasDecimal = false,
 }: {
   value: string
   onChange: (v: string) => void
   onSubmit: () => void
   disabled: boolean
+  hasDecimal?: boolean
 }) {
   function press(key: string) {
     if (disabled) return
     if (key === '⌫') { onChange(value.slice(0, -1)); return }
     if (key === '✓') { onSubmit(); return }
-    if (value.length < 5) onChange(value + key)
+    if (key === '.') {
+      if (!value.includes('.') && value.length < 6) onChange(value + key)
+      return
+    }
+    if (value.length < 6) onChange(value + key)
   }
 
-  const rows = [
-    ['7', '8', '9'],
-    ['4', '5', '6'],
-    ['1', '2', '3'],
-    ['⌫', '0', '✓'],
-  ]
+  // Row 3 adds decimal point when in decimal mode (4-col row)
+  const row3 = hasDecimal ? ['1', '2', '3', '.'] : ['1', '2', '3']
 
   return (
     <div className="grid gap-2.5 w-full">
-      {rows.map((row, ri) => (
-        <div key={ri} className="grid grid-cols-3 gap-2.5">
+      {[['7', '8', '9'], ['4', '5', '6'], row3, ['⌫', '0', '✓']].map((row, ri) => (
+        <div key={ri} className={`grid gap-2.5 ${row.length === 4 ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {row.map(key => {
             const isSubmit = key === '✓'
             const isDelete = key === '⌫'
+            const isDot = key === '.'
             return (
               <motion.button
                 key={key}
@@ -93,7 +96,9 @@ function Numpad({
                     ? 'bg-gradient-to-br from-violet-500 to-pink-500 text-white disabled:opacity-40'
                     : isDelete
                       ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                      : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-100'
+                      : isDot
+                        ? 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 border border-cyan-200'
+                        : 'bg-white text-gray-700 hover:bg-purple-50 border border-gray-100'
                   }
                 `}
                 whileTap={{ scale: 0.91 }}
@@ -258,26 +263,47 @@ function DashboardScreen({
           )}
 
           <p className="text-xs font-black text-gray-400 mb-2">{'วันนี้ฝึกอะไรดี'}?</p>
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            {ALL_OPS.map(op => {
-              const meta = OP_META[op]
-              const active = op === selectedOp
-              return (
-                <motion.button
-                  key={op}
-                  onClick={() => onSelectOp(op)}
-                  whileTap={{ scale: 0.92 }}
-                  className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
-                    active
-                      ? `bg-gradient-to-br ${meta.color} text-white shadow-md`
-                      : 'bg-gray-50 text-gray-500 border border-gray-100'
-                  }`}
-                >
-                  <span className="text-2xl font-black leading-none">{meta.symbol}</span>
-                  <span className="text-[10px] font-bold mt-1">{meta.name}</span>
-                </motion.button>
-              )
-            })}
+          <div className="mb-1">
+            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">พื้นฐาน</p>
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {BASIC_OPS.map(op => {
+                const meta = OP_META[op]
+                const active = op === selectedOp
+                return (
+                  <motion.button
+                    key={op}
+                    onClick={() => onSelectOp(op)}
+                    whileTap={{ scale: 0.92 }}
+                    className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
+                      active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
+                    }`}
+                  >
+                    <span className="text-xl font-black leading-none">{meta.symbol}</span>
+                    <span className="text-[10px] font-bold mt-1">{meta.name}</span>
+                  </motion.button>
+                )
+              })}
+            </div>
+            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">ขั้นสูง</p>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {ADVANCED_OPS.map(op => {
+                const meta = OP_META[op]
+                const active = op === selectedOp
+                return (
+                  <motion.button
+                    key={op}
+                    onClick={() => onSelectOp(op)}
+                    whileTap={{ scale: 0.92 }}
+                    className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
+                      active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
+                    }`}
+                  >
+                    <span className="text-xl font-black leading-none">{meta.symbol}</span>
+                    <span className="text-[10px] font-bold mt-1">{meta.name}</span>
+                  </motion.button>
+                )
+              })}
+            </div>
           </div>
 
           <motion.button
@@ -367,12 +393,23 @@ function PracticeScreen({
     if (timerRef.current) clearInterval(timerRef.current)
 
     const elapsed = (Date.now() - startTimeRef.current) / 1000
-    const userNum = parseInt(inputValue, 10)
-    const isCorrect = userNum === problem.answer
+
+    // Decimal mode: compare as float; fraction/integer: compare as integer
+    let isCorrect: boolean
+    let userAnswerNum: number | null
+    if (problem.displayScale) {
+      const userFloat = parseFloat(inputValue)
+      userAnswerNum = isNaN(userFloat) ? null : userFloat
+      isCorrect = Math.abs(userFloat - problem.answer / problem.displayScale) < 0.0001
+    } else {
+      const userNum = parseInt(inputValue, 10)
+      userAnswerNum = isNaN(userNum) ? null : userNum
+      isCorrect = userNum === problem.answer
+    }
 
     const record: AnswerRecord = {
       problem,
-      userAnswer: isNaN(userNum) ? null : userNum,
+      userAnswer: userAnswerNum,
       isCorrect,
       timeSeconds: Math.round(elapsed * 10) / 10,
     }
@@ -403,7 +440,11 @@ function PracticeScreen({
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Enter') { submitAnswer(); return }
       if (e.key === 'Backspace') { setInputValue(v => v.slice(0, -1)); return }
-      if (/^\d$/.test(e.key)) { setInputValue(v => v.length < 5 ? v + e.key : v) }
+      if (e.key === '.' && problem.op === 'decimal') {
+        setInputValue(v => !v.includes('.') && v.length < 6 ? v + '.' : v)
+        return
+      }
+      if (/^\d$/.test(e.key)) { setInputValue(v => v.length < 6 ? v + e.key : v) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -493,7 +534,13 @@ function PracticeScreen({
                   }`}>
                     {feedback === 'correct'
                       ? `ถูกต้อง! +${EXP_PER_CORRECT} EXP`
-                      : `คำตอบคือ ${problem.answer}`}
+                      : `คำตอบคือ ${
+                          problem.displayScale
+                            ? (problem.answer / problem.displayScale).toFixed(problem.displayScale === 10 ? 1 : 2)
+                            : problem.denominator
+                              ? `${problem.answer}/${problem.denominator}`
+                              : problem.answer
+                        }`}
                   </p>
                 </motion.div>
               )}
@@ -511,21 +558,59 @@ function PracticeScreen({
               </p>
             )}
 
-            <div className="flex flex-col items-end pr-8 mb-2 gap-1">
-              <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
-                {problem.a.toLocaleString()}
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="text-4xl font-black text-violet-500">{OP_META[op].symbol}</span>
-                <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
-                  {problem.b.toLocaleString()}
-                </span>
+            {/* ── Fraction display ── */}
+            {problem.op === 'fraction' ? (
+              <div className="flex flex-col items-end pr-8 mb-2 gap-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-5xl font-black text-gray-800 font-mono">{problem.a}</span>
+                  <div className="flex flex-col items-center mx-1">
+                    <div className="w-1 h-0" />
+                    <div className="w-px h-8 bg-gray-300" style={{ writingMode: 'horizontal-tb', borderLeft: '2px solid #9ca3af', transform: 'rotate(20deg)', marginBottom: 2 }} />
+                  </div>
+                  <span className="text-3xl font-black text-violet-400">{problem.denominator}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl font-black text-violet-500">+</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-5xl font-black text-gray-800 font-mono">{problem.b}</span>
+                    <div className="flex flex-col items-center mx-1">
+                      <div className="w-px h-8 bg-gray-300" style={{ borderLeft: '2px solid #9ca3af', transform: 'rotate(20deg)', marginBottom: 2 }} />
+                    </div>
+                    <span className="text-3xl font-black text-violet-400">{problem.denominator}</span>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : problem.op === 'decimal' ? (
+              /* ── Decimal display ── */
+              <div className="flex flex-col items-end pr-8 mb-2 gap-1">
+                <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
+                  {(problem.a / (problem.displayScale ?? 10)).toFixed(problem.displayScale === 100 ? 2 : 1)}
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl font-black text-cyan-500">+</span>
+                  <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
+                    {(problem.b / (problem.displayScale ?? 10)).toFixed(problem.displayScale === 100 ? 2 : 1)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* ── Standard (add/sub/mul/div/times_table) display ── */
+              <div className="flex flex-col items-end pr-8 mb-2 gap-1">
+                <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
+                  {problem.a.toLocaleString()}
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl font-black text-violet-500">{OP_META[op].symbol}</span>
+                  <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
+                    {problem.b.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="border-b-4 border-gray-200 mx-4 mb-4" />
 
-            <div className="h-16 flex items-center justify-end pr-8">
+            <div className="h-16 flex items-center justify-end pr-8 gap-1">
               <AnimatePresence mode="wait">
                 {inputValue ? (
                   <motion.span
@@ -547,6 +632,9 @@ function PracticeScreen({
                   </motion.span>
                 )}
               </AnimatePresence>
+              {problem.op === 'fraction' && problem.denominator && (
+                <span className="text-3xl font-black text-violet-300">/{problem.denominator}</span>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
@@ -558,6 +646,7 @@ function PracticeScreen({
           onChange={setInputValue}
           onSubmit={submitAnswer}
           disabled={!!feedback}
+          hasDecimal={problem.op === 'decimal'}
         />
       </div>
     </motion.div>
