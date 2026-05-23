@@ -117,6 +117,7 @@ function DashboardScreen({
   trophyCount,
   onStart,
   onOpenTrophies,
+  onSwitchUser,
   onReset,
 }: {
   profile: Profile
