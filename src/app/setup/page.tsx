@@ -83,7 +83,7 @@ export default function SetupPage() {
 
     // Small delay for celebration feel
     await new Promise(r => setTimeout(r, 500))
-    router.push('/')
+    router.push('/assessment?new=1')
   }
 
   return (
