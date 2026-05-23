@@ -12,6 +12,82 @@ function loadHistory(profileId: string): SessionRecord[] {
 
 const ITEMS_PER_PAGE = 20
 
+// ─── Accuracy Sparkline Chart ──────────────────────────────────────────────────
+function AccuracyChart({ sessions }: { sessions: SessionRecord[] }) {
+  if (sessions.length < 2) return null
+
+  const W = 300, H = 80, PAD = 8
+  const points = sessions.map((s, i) => ({
+    x: PAD + (i / (sessions.length - 1)) * (W - PAD * 2),
+    y: PAD + (1 - s.accuracy / 100) * (H - PAD * 2),
+    acc: s.accuracy,
+    op: s.op,
+  }))
+
+  const polyline = points.map(p => `${p.x},${p.y}`).join(' ')
+  const areaPath = `M${points[0].x},${H} ` +
+    points.map(p => `L${p.x},${p.y}`).join(' ') +
+    ` L${points[points.length - 1].x},${H} Z`
+
+  const avg = Math.round(sessions.reduce((s, r) => s + r.accuracy, 0) / sessions.length)
+  const last = sessions[sessions.length - 1].accuracy
+  const trend = last > avg ? '▲' : last < avg ? '▼' : '─'
+  const trendColor = last > avg ? 'text-emerald-500' : last < avg ? 'text-red-400' : 'text-gray-400'
+
+  return (
+    <div>
+      <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-1 px-1">
+        <span>เก่าสุด</span>
+        <span className={`font-black text-sm ${trendColor}`}>{trend} {last}%</span>
+        <span>ล่าสุด</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+        {/* 50% and 90% guide lines */}
+        {[50, 90].map(pct => {
+          const y = PAD + (1 - pct / 100) * (H - PAD * 2)
+          return (
+            <g key={pct}>
+              <line x1={PAD} y1={y} x2={W - PAD} y2={y} stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4,3" />
+              <text x={W - PAD + 2} y={y + 3} fontSize="8" fill="#9ca3af">{pct}%</text>
+            </g>
+          )
+        })}
+        {/* Area fill */}
+        <path d={areaPath} fill="url(#chartGrad)" opacity="0.3" />
+        {/* Line */}
+        <polyline points={polyline} fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinejoin="round" />
+        {/* Dots */}
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x} cy={p.y} r={i === points.length - 1 ? 4 : 2.5}
+            fill={p.acc >= 90 ? '#10b981' : p.acc >= 70 ? '#7c3aed' : '#f59e0b'}
+            stroke="white" strokeWidth="1.5"
+          />
+        ))}
+        <defs>
+          <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div className="flex justify-center gap-4 mt-1">
+        {[
+          { color: 'bg-emerald-400', label: '≥90%' },
+          { color: 'bg-violet-500',  label: '70-89%' },
+          { color: 'bg-amber-400',   label: '<70%' },
+        ].map(l => (
+          <div key={l.label} className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-full ${l.color}`} />
+            <span className="text-[9px] text-gray-400 font-bold">{l.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function HistoryPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -108,6 +184,19 @@ export default function HistoryPage() {
             })}
           </div>
         </motion.div>
+
+        {/* Accuracy Trend Chart */}
+        {history.length >= 3 && (
+          <motion.div
+            className="bg-white rounded-3xl shadow-xl p-5 mb-4"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <h2 className="text-sm font-black text-gray-600 mb-3">📈 ความแม่นยำ 20 ครั้งล่าสุด</h2>
+            <AccuracyChart sessions={history.slice(0, 20).reverse()} />
+          </motion.div>
+        )}
 
         {/* Filter tabs */}
         <motion.div

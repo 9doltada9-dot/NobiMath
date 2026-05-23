@@ -36,11 +36,7 @@ export default function SetupPage() {
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // Redirect if already set up
-  useEffect(() => {
-    const existing = localStorage.getItem('nobi_profile')
-    if (existing) router.replace('/')
-  }, [router])
+  // No redirect — allow adding multiple profiles
 
   function goNext() {
     setDirection(1)

@@ -308,6 +308,13 @@ function DashboardScreen({
           </button>
 
           <button
+            onClick={() => window.location.href = '/assessment'}
+            className="w-full text-amber-400 text-xs font-semibold hover:text-amber-600 transition-colors py-1"
+          >
+            {'🎓 ทำแบบทดสอบวัดระดับ'}
+          </button>
+
+          <button
             onClick={onReset}
             className="w-full text-gray-300 text-xs font-semibold hover:text-gray-500 transition-colors py-1"
           >
@@ -958,11 +965,12 @@ export default function PracticePage() {
       localStorage.setItem(lastPracticeKey, today)
     }
 
+    const sessionId = `session_${Date.now()}`
     const session: PracticeSession = {
-      id: `session_${Date.now()}`,
+      id: sessionId,
       profileId: profile.id,
       scheduledDate: new Date().toISOString().split('T')[0],
-      level: profile.level,
+      level: curOpLevel,
       problems: answers.map(a => a.problem),
       submittedAnswers: answers,
       score: correctCount,

@@ -47,10 +47,22 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-4">
       <div className="max-w-lg mx-auto pt-4 pb-8">
 
-        {/* Back */}
-        <button onClick={() => router.push('/')} className="text-white/70 text-sm font-bold mb-4 flex items-center gap-1 hover:text-white">
-          ← กลับ
-        </button>
+        {/* Back + Action row */}
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => router.push('/')} className="text-white/70 text-sm font-bold flex items-center gap-1 hover:text-white">
+            ← กลับ
+          </button>
+          <button
+            onClick={() => {
+              localStorage.setItem('nobi_active_profile', profile.id)
+              localStorage.setItem('nobi_profile', JSON.stringify(profile))
+              router.push('/assessment')
+            }}
+            className="bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-white/30 transition-colors"
+          >
+            🎓 ทำแบบทดสอบ
+          </button>
+        </div>
 
         {/* Header card */}
         <motion.div className="bg-white rounded-3xl shadow-xl overflow-hidden mb-4"
