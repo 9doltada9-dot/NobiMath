@@ -13,15 +13,49 @@ function available(): boolean {
   return supabase !== null && (supabase as unknown) !== null
 }
 
-export async function authSignUp(email: string, password: string): Promise<{ user: AuthUser | null; error: string | null }> {
+export async function authSignUp(
+  email: string,
+  password: string,
+  redirectTo?: string
+): Promise<{ user: AuthUser | null; error: string | null; needsConfirmation?: boolean }> {
   if (!available()) return { user: null, error: 'Supabase not configured' }
   try {
-    const { data, error } = await client().auth.signUp({ email, password })
+    const { data, error } = await client().auth.signUp({
+      email,
+      password,
+      options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
+    })
     if (error) return { user: null, error: error.message }
     if (!data.user) return { user: null, error: 'ไม่ได้รับข้อมูลผู้ใช้' }
-    return { user: { id: data.user.id, email: data.user.email! }, error: null }
+    // session is null when email confirmation is required
+    const needsConfirmation = !data.session
+    return { user: { id: data.user.id, email: data.user.email! }, error: null, needsConfirmation }
   } catch (e: unknown) {
     return { user: null, error: String(e) }
+  }
+}
+
+// Called when user lands back on /login after clicking confirmation email link
+export async function handleAuthCallback(): Promise<AuthUser | null> {
+  if (!available() || typeof window === 'undefined') return null
+  try {
+    // PKCE flow: Supabase v2 puts a `code` query param
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (code) {
+      const { data } = await client().auth.exchangeCodeForSession(code)
+      if (data.session?.user) {
+        return { id: data.session.user.id, email: data.session.user.email ?? '' }
+      }
+    }
+    // Fallback: implicit flow (hash fragment)
+    const { data } = await client().auth.getSession()
+    if (data.session?.user) {
+      return { id: data.session.user.id, email: data.session.user.email ?? '' }
+    }
+    return null
+  } catch {
+    return null
   }
 }
 
