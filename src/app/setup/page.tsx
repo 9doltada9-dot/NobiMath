@@ -407,6 +407,4 @@ export default function SetupPage() {
           NOBI SKILL ✨
         </div>
       </motion.div>
-    </div>
-  )
-}
+ 

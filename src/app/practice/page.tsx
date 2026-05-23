@@ -123,7 +123,6 @@ function DashboardScreen({
   onStart,
   onOpenTrophies,
   onSwitchUser,
-  onReset,
 }: {
   profile: Profile
   skillStats: SkillStats
@@ -133,7 +132,6 @@ function DashboardScreen({
   onStart: () => void
   onOpenTrophies: () => void
   onSwitchUser: () => void
-  onReset: () => void
 }) {
   const router = useRouter()
   const avatar = getAvatar(profile.avatar)
@@ -344,12 +342,6 @@ function DashboardScreen({
             {'🎓 ทำแบบทดสอบวัดระดับ'}
           </button>
 
-          <button
-            onClick={onReset}
-            className="w-full text-gray-300 text-xs font-semibold hover:text-gray-500 transition-colors py-1"
-          >
-            {'เริ่มใหม่'} ({'ล้างข้อมูล'})
-          </button>
         </div>
       </motion.div>
     </div>
@@ -1137,11 +1129,6 @@ export default function PracticePage() {
       .finally(() => setAiFeedbackLoading(false))
   }
 
-  function handleReset() {
-    localStorage.clear()
-    router.push('/setup')
-  }
-
   if (!profile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center">
@@ -1196,7 +1183,4 @@ export default function PracticePage() {
       onStart={() => setScreen('practice')}
       onOpenTrophies={() => setScreen('trophies')}
       onSwitchUser={() => router.push('/')}
-      onReset={handleReset}
-    />
-  )
-}
+    

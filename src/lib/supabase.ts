@@ -101,19 +101,28 @@ export async function savePracticeSession(session: PracticeSession): Promise<voi
   }
 }
 
-// ─── Edge Function: analyze-session ──────────────────────────────────────────
-export interface AnalyzeSessionParams {
+// ─── Edge Function: analyze-assessment ───────────────────────────────────────
+export interface AnalyzeAssessmentParams {
   nickname: string
   age: number
-  op: Op
-  level: number
-  answers: AnswerRecord[]
+  determinedLevel: number
+  accuracy: number
+  avgTimeSeconds: number
+  perOpLevels: Partial<Record<Op, number>>
 }
 
-export async function callAnalyzeSession(params: AnalyzeSessionParams): Promise<AIFeedback | null> {
+export interface AssessmentAIFeedback {
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  recommendation: string
+  encouragement: string
+}
+
+export async function callAnalyzeAssessment(params: AnalyzeAssessmentParams): Promise<AssessmentAIFeedback | null> {
   if (!isConfigured()) return null
   try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/analyze-session`, {
+    const res = await fetch(`${supabaseUrl}/functions/v1/analyze-assessment`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -124,13 +133,4 @@ export async function callAnalyzeSession(params: AnalyzeSessionParams): Promise<
     })
     if (!res.ok) {
       const err = await res.text()
-      console.warn('[Supabase] analyze-session error:', err)
-      return null
-    }
-    const data = await res.json()
-    return data.feedback ?? null
-  } catch (e) {
-    console.warn('[Supabase] callAnalyzeSession failed:', e)
-    return null
-  }
-}
+      console.warn

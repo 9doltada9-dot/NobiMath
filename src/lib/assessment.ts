@@ -1,28 +1,49 @@
 import type { Op, Problem, AnswerRecord } from './types'
 import { generateProblem as genProblem } from './problems'
 
-// ─── Assessment phases: 5 questions each, cycling through all 4 ops ────────────
-export const ASSESSMENT_PHASES: { op: Op; label: string; emoji: string }[] = [
+// ─── Age-based operation set ──────────────────────────────────────────────────
+// Very young children: only addition (and subtraction at age 7+)
+// Multiplication & division only from age 9+
+export type AssessmentPhase = { op: Op; label: string; emoji: string }
+
+export const ALL_PHASES: AssessmentPhase[] = [
   { op: 'add', label: 'บวก',  emoji: '➕' },
   { op: 'sub', label: 'ลบ',   emoji: '➖' },
   { op: 'mul', label: 'คูณ',  emoji: '✖️' },
   { op: 'div', label: 'หาร',  emoji: '➗' },
 ]
-export const QUESTIONS_PER_PHASE = 5   // 4 × 5 = 20 total
 
-export function phaseOf(questionIndex: number) {
-  return ASSESSMENT_PHASES[Math.min(Math.floor(questionIndex / QUESTIONS_PER_PHASE), 3)]
+export function getAssessmentPhases(age: number): AssessmentPhase[] {
+  if (age <= 6)  return ALL_PHASES.slice(0, 1)   // บวก เท่านั้น
+  if (age <= 8)  return ALL_PHASES.slice(0, 2)   // บวก + ลบ
+  return ALL_PHASES                               // ทุกหัวข้อ (9+)
+}
+
+// Legacy export for backwards compat
+export const ASSESSMENT_PHASES = ALL_PHASES
+export const QUESTIONS_PER_PHASE = 5
+
+export function phaseOf(questionIndex: number, phases = ALL_PHASES) {
+  const idx = Math.min(Math.floor(questionIndex / QUESTIONS_PER_PHASE), phases.length - 1)
+  return phases[idx]
+}
+
+export function totalQuestionsForAge(age: number): number {
+  return getAssessmentPhases(age).length * QUESTIONS_PER_PHASE
 }
 
 // ─── Problem Generator ─────────────────────────────────────────────────────────
-export function generateProblem(level: number, questionIndex = 0): Problem {
-  return genProblem(phaseOf(questionIndex).op, level)
+export function generateProblem(level: number, questionIndex = 0, phases = ALL_PHASES): Problem {
+  return genProblem(phaseOf(questionIndex, phases).op, level)
 }
 
 // ─── Per-operation final levels ────────────────────────────────────────────────
-export function calculatePerOpLevels(answers: AnswerRecord[]): Partial<Record<Op, number>> {
+export function calculatePerOpLevels(
+  answers: AnswerRecord[],
+  phases: AssessmentPhase[] = ALL_PHASES
+): Partial<Record<Op, number>> {
   const result: Partial<Record<Op, number>> = { add: 1, sub: 1, mul: 1, div: 1 }
-  ASSESSMENT_PHASES.forEach(({ op }, pi) => {
+  phases.forEach(({ op }, pi) => {
     const slice = answers.slice(pi * QUESTIONS_PER_PHASE, (pi + 1) * QUESTIONS_PER_PHASE)
     if (slice.length === 0) return
     result[op] = calculateFinalLevel(slice)

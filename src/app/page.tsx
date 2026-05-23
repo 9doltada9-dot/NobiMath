@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type React from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { getAvatar } from '@/lib/avatars'
@@ -14,6 +15,64 @@ import type { AuthUser } from '@/lib/auth'
 import { APP_VERSION, APP_VERSION_NAME } from '@/lib/version'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
+
+// ─── Swipeable wrapper — swipe left to reveal delete ──────────────────────────
+function SwipeCard({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }) {
+  const [swipeX, setSwipeX] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const startX = useRef(0)
+  const DELETE_THRESHOLD = 80
+
+  function onTouchStart(e: React.TouchEvent) {
+    startX.current = e.touches[0].clientX
+    setDragging(true)
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (!dragging) return
+    const dx = e.touches[0].clientX - startX.current
+    if (dx < 0) setSwipeX(Math.max(dx, -DELETE_THRESHOLD - 20))
+  }
+  function onTouchEnd() {
+    setDragging(false)
+    if (swipeX < -DELETE_THRESHOLD) {
+      setSwipeX(-DELETE_THRESHOLD)
+      setConfirming(true)
+    } else {
+      setSwipeX(0)
+      setConfirming(false)
+    }
+  }
+  function cancel() { setSwipeX(0); setConfirming(false) }
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      {/* Delete button behind */}
+      <div className="absolute right-0 top-0 bottom-0 w-20 flex items-center justify-center bg-red-500 rounded-r-2xl">
+        <button
+          onClick={() => { setConfirming(false); onDelete() }}
+          className="flex flex-col items-center gap-0.5 text-white"
+        >
+          <span className="text-xl">🗑️</span>
+          <span className="text-[10px] font-black">ลบ</span>
+        </button>
+      </div>
+      {/* Card — slides left on swipe */}
+      <motion.div
+        style={{ x: swipeX }}
+        animate={{ x: swipeX }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClick={confirming ? cancel : undefined}
+        className="relative z-10"
+      >
+        {children}
+      </motion.div>
+    </div>
+  )
+}
 
 interface ProfileCardData {
   profile: Profile
@@ -128,6 +187,20 @@ export default function HomePage() {
     router.push('/practice')
   }
 
+  function deleteProfile(profileId: string) {
+    try {
+      const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+      const updated = profiles.filter(p => p.id !== profileId)
+      localStorage.setItem('nobi_profiles', JSON.stringify(updated))
+      if (updated.length === 0) {
+        router.replace('/setup')
+      } else {
+        const { data } = buildCards()
+        setCards(data)
+      }
+    } catch { /* ignore */ }
+  }
+
   function addNew() { router.push('/setup') }
 
   if (!loaded) {
@@ -220,7 +293,7 @@ export default function HomePage() {
         </motion.p>
 
         {/* Profile cards */}
-        <div className="space-y-3 mb-4">
+        <div className="space-y-2 mb-4">
           {cards.map((card, i) => {
             const { profile, sessions, accuracy, trophyCount, streak } = card
             const avatar = getAvatar(profile.avatar)
@@ -231,35 +304,36 @@ export default function HomePage() {
             return (
               <motion.div
                 key={profile.id}
-                className="w-full bg-white rounded-3xl shadow-xl overflow-hidden text-left"
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08, type: 'spring', stiffness: 200, damping: 20 }}
               >
+              <SwipeCard onDelete={() => deleteProfile(profile.id)}>
+              <div className="w-full bg-white rounded-2xl shadow-lg overflow-hidden text-left">
                 {/* Top gradient bar — click → practice */}
                 <button
                   onClick={() => selectProfile(profile)}
-                  className={`w-full bg-gradient-to-r ${levelMeta.color} px-4 py-3 flex items-center gap-3 hover:brightness-105 active:brightness-95 transition-all`}
+                  className={`w-full bg-gradient-to-r ${levelMeta.color} px-3 py-2 flex items-center gap-2.5 hover:brightness-105 active:brightness-95 transition-all`}
                 >
-                  <div className="w-12 h-12 rounded-full bg-white/30 flex items-center justify-center text-2xl shadow-md flex-shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-white/30 flex items-center justify-center text-lg shadow-md flex-shrink-0">
                     {avatar.emoji}
                   </div>
                   <div className="flex-1 min-w-0 text-left">
-                    <p className="text-white font-black text-base truncate">{profile.nickname}</p>
-                    <p className="text-white/80 text-xs font-semibold">
-                      {levelMeta.emoji} {levelMeta.name} · Game Lv.{gameLevel}
+                    <p className="text-white font-black text-sm truncate">{profile.nickname}</p>
+                    <p className="text-white/80 text-[10px] font-semibold">
+                      {levelMeta.emoji} {levelMeta.name} · Lv.{gameLevel}
                     </p>
                   </div>
-                  <div className="text-white/90 text-2xl flex-shrink-0">›</div>
+                  <div className="text-white/90 text-xl flex-shrink-0">›</div>
                 </button>
 
                 {/* EXP bar */}
-                <div className="px-4 pt-2.5 pb-1">
-                  <div className="flex justify-between text-[10px] text-gray-400 font-bold mb-1">
+                <div className="px-3 pt-1.5 pb-0.5">
+                  <div className="flex justify-between text-[9px] text-gray-400 font-bold mb-0.5">
                     <span>⚡ {profile.totalExp} EXP</span>
                     <span>{expPct}/100</span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <motion.div
                       className={`h-full bg-gradient-to-r ${levelMeta.color} rounded-full`}
                       initial={{ width: 0 }}
@@ -270,30 +344,32 @@ export default function HomePage() {
                 </div>
 
                 {/* Stats row */}
-                <div className="grid grid-cols-4 gap-0 px-4 py-2">
+                <div className="grid grid-cols-4 gap-0 px-3 py-1.5">
                   {[
                     { emoji: '📚', label: 'เซสชั่น', value: `${sessions}` },
                     { emoji: '🎯', label: 'แม่นยำ',  value: accuracy >= 0 ? `${accuracy}%` : '—' },
-                    { emoji: '🔥', label: 'Streak',  value: `${streak}วัน` },
+                    { emoji: '🔥', label: 'Streak',  value: `${streak}ว.` },
                     { emoji: '🏆', label: 'Trophy',  value: `${trophyCount}/${TROPHIES.length}` },
                   ].map(stat => (
                     <div key={stat.label} className="text-center">
-                      <p className="text-base">{stat.emoji}</p>
-                      <p className="text-xs font-black text-violet-700 tabular-nums">{stat.value}</p>
-                      <p className="text-[9px] text-gray-400 font-bold">{stat.label}</p>
+                      <p className="text-sm">{stat.emoji}</p>
+                      <p className="text-[11px] font-black text-violet-700 tabular-nums">{stat.value}</p>
+                      <p className="text-[8px] text-gray-400 font-bold">{stat.label}</p>
                     </div>
                   ))}
                 </div>
 
                 {/* Profile link */}
-                <div className="px-4 pb-3">
+                <div className="px-3 pb-2">
                   <button
                     onClick={() => router.push(`/profile?id=${profile.id}`)}
-                    className="w-full text-center text-xs font-bold text-violet-400 hover:text-violet-600 py-1.5 border border-violet-100 rounded-xl hover:bg-violet-50 transition-colors"
+                    className="w-full text-center text-[11px] font-bold text-violet-400 hover:text-violet-600 py-1 border border-violet-100 rounded-xl hover:bg-violet-50 transition-colors"
                   >
                     📊 ดูโปรไฟล์และสถิติ
                   </button>
                 </div>
+              </div>
+              </SwipeCard>
               </motion.div>
             )
           })}

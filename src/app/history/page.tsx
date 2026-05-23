@@ -299,13 +299,4 @@ export default function HistoryPage() {
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={page_ === totalPages - 1}
               className="bg-white/20 text-white font-bold px-4 py-2 rounded-xl text-sm disabled:opacity-40 hover:bg-white/30 transition-colors"
-            >
-              ถัดไป →
-            </button>
-          </div>
-        )}
-
-      </div>
-    </div>
-  )
-}
+         
