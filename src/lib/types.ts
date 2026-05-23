@@ -73,6 +73,20 @@ export interface AssessmentResult {
   totalQuestions: number
   answers: AnswerRecord[]
   completedAt: string
+  perOpLevels?: Partial<Record<Op, number>>  // level per operation after assessment
+}
+
+// ─── Session History (localStorage, per profile) ──────────────────────────────
+export interface SessionRecord {
+  id: string
+  date: string              // ISO date string
+  op: Op
+  score: number             // correct count
+  total: number             // total questions
+  accuracy: number          // 0-100
+  avgTimeSeconds: number
+  expGained: number
+  level: number
 }
 
 // ─── Practice Session ─────────────────────────────────────────────────────────

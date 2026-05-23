@@ -109,29 +109,29 @@ export default function HomePage() {
             const expPct = profile.totalExp % 100
 
             return (
-              <motion.button
+              <motion.div
                 key={profile.id}
-                onClick={() => selectProfile(profile)}
                 className="w-full bg-white rounded-3xl shadow-xl overflow-hidden text-left"
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08, type: 'spring', stiffness: 200, damping: 20 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
               >
-                {/* Top gradient bar */}
-                <div className={`bg-gradient-to-r ${levelMeta.color} px-4 py-3 flex items-center gap-3`}>
+                {/* Top gradient bar — click → practice */}
+                <button
+                  onClick={() => selectProfile(profile)}
+                  className={`w-full bg-gradient-to-r ${levelMeta.color} px-4 py-3 flex items-center gap-3 hover:brightness-105 active:brightness-95 transition-all`}
+                >
                   <div className="w-12 h-12 rounded-full bg-white/30 flex items-center justify-center text-2xl shadow-md flex-shrink-0">
                     {avatar.emoji}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 text-left">
                     <p className="text-white font-black text-base truncate">{profile.nickname}</p>
                     <p className="text-white/80 text-xs font-semibold">
                       {levelMeta.emoji} {levelMeta.name} · Game Lv.{gameLevel}
                     </p>
                   </div>
                   <div className="text-white/90 text-2xl flex-shrink-0">›</div>
-                </div>
+                </button>
 
                 {/* EXP bar */}
                 <div className="px-4 pt-2.5 pb-1">
@@ -150,7 +150,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Stats row */}
-                <div className="grid grid-cols-4 gap-0 px-4 py-2.5">
+                <div className="grid grid-cols-4 gap-0 px-4 py-2">
                   {[
                     { emoji: '📚', label: 'เซสชั่น', value: `${sessions}` },
                     { emoji: '🎯', label: 'แม่นยำ',  value: accuracy >= 0 ? `${accuracy}%` : '—' },
@@ -164,7 +164,17 @@ export default function HomePage() {
                     </div>
                   ))}
                 </div>
-              </motion.button>
+
+                {/* Profile link */}
+                <div className="px-4 pb-3">
+                  <button
+                    onClick={() => router.push(`/profile/${profile.id}`)}
+                    className="w-full text-center text-xs font-bold text-violet-400 hover:text-violet-600 py-1.5 border border-violet-100 rounded-xl hover:bg-violet-50 transition-colors"
+                  >
+                    📊 ดูโปรไฟล์และสถิติ
+                  </button>
+                </div>
+              </motion.div>
             )
           })}
         </div>

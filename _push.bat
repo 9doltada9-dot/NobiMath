@@ -13,7 +13,7 @@ git add -A
 
 echo.
 echo [2/3] git commit ...
-git commit -m "Add adaptive practice system + skip assessment for testing"
+git commit -m "Phase 1+2: history page, profile link, Supabase edge function, Gemini AI feedback"
 
 echo.
 echo [3/3] git push ...

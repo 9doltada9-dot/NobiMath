@@ -1,9 +1,33 @@
-import type { Problem, AnswerRecord } from './types'
+import type { Op, Problem, AnswerRecord } from './types'
 import { generateProblem as genProblem } from './problems'
 
-// ─── Problem Generator (assessment uses addition for leveling) ──────────────────
-export function generateProblem(level: number): Problem {
-  return genProblem('add', level)
+// ─── Assessment phases: 5 questions each, cycling through all 4 ops ────────────
+export const ASSESSMENT_PHASES: { op: Op; label: string; emoji: string }[] = [
+  { op: 'add', label: 'บวก',  emoji: '➕' },
+  { op: 'sub', label: 'ลบ',   emoji: '➖' },
+  { op: 'mul', label: 'คูณ',  emoji: '✖️' },
+  { op: 'div', label: 'หาร',  emoji: '➗' },
+]
+export const QUESTIONS_PER_PHASE = 5   // 4 × 5 = 20 total
+
+export function phaseOf(questionIndex: number) {
+  return ASSESSMENT_PHASES[Math.min(Math.floor(questionIndex / QUESTIONS_PER_PHASE), 3)]
+}
+
+// ─── Problem Generator ─────────────────────────────────────────────────────────
+export function generateProblem(level: number, questionIndex = 0): Problem {
+  return genProblem(phaseOf(questionIndex).op, level)
+}
+
+// ─── Per-operation final levels ────────────────────────────────────────────────
+export function calculatePerOpLevels(answers: AnswerRecord[]): Record<Op, number> {
+  const result: Record<Op, number> = { add: 1, sub: 1, mul: 1, div: 1 }
+  ASSESSMENT_PHASES.forEach(({ op }, pi) => {
+    const slice = answers.slice(pi * QUESTIONS_PER_PHASE, (pi + 1) * QUESTIONS_PER_PHASE)
+    if (slice.length === 0) return
+    result[op] = calculateFinalLevel(slice)
+  })
+  return result
 }
 
 // ─── Starting Level by Age ────────────────────────────────────────────────────

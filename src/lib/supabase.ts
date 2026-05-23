@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import type { Profile, AssessmentResult, PracticeSession } from './types'
+import type { Profile, AssessmentResult, PracticeSession, AIFeedback, AnswerRecord, Op } from './types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
@@ -95,5 +95,39 @@ export async function savePracticeSession(session: PracticeSession): Promise<voi
     })
   } catch (e) {
     console.warn('[Supabase] savePracticeSession failed:', e)
+  }
+}
+
+// ─── Edge Function: analyze-session ──────────────────────────────────────────
+export interface AnalyzeSessionParams {
+  nickname: string
+  age: number
+  op: Op
+  level: number
+  answers: AnswerRecord[]
+}
+
+export async function callAnalyzeSession(params: AnalyzeSessionParams): Promise<AIFeedback | null> {
+  if (!isConfigured()) return null
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/analyze-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      console.warn('[Supabase] analyze-session error:', err)
+      return null
+    }
+    const data = await res.json()
+    return data.feedback ?? null
+  } catch (e) {
+    console.warn('[Supabase] callAnalyzeSession failed:', e)
+    return null
   }
 }

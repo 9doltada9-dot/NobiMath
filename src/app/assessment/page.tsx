@@ -9,8 +9,12 @@ import {
   getStartingLevel,
   getNextLevel,
   calculateFinalLevel,
+  calculatePerOpLevels,
   calcAccuracy,
   calcAvgTime,
+  phaseOf,
+  ASSESSMENT_PHASES,
+  QUESTIONS_PER_PHASE,
 } from '@/lib/assessment'
 import { loadSkillStats, saveSkillStats, recordAnswers } from '@/lib/adaptive'
 import { LEVEL_META } from '@/lib/types'
@@ -224,7 +228,7 @@ export default function AssessmentPage() {
     setProfile(p)
     const startLevel = getStartingLevel(p.age)
     setCurrentLevel(startLevel)
-    setProblem(generateProblem(startLevel))
+    setProblem(generateProblem(startLevel, 0))
     startTimeRef.current = Date.now()
   }, [router])
 
@@ -264,6 +268,7 @@ export default function AssessmentPage() {
       if (questionIndex + 1 >= TOTAL_QUESTIONS) {
         // ── Finish ──────────────────────────────────────────────────────────
         const determinedLevel = calculateFinalLevel(newAnswers)
+        const perOpLevels = calculatePerOpLevels(newAnswers)
         const assessmentResult: AssessmentResult = {
           profileId: profile?.id ?? '',
           determinedLevel,
@@ -272,6 +277,7 @@ export default function AssessmentPage() {
           totalQuestions: TOTAL_QUESTIONS,
           answers: newAnswers,
           completedAt: new Date().toISOString(),
+          perOpLevels,
         }
         localStorage.setItem('nobi_assessment', JSON.stringify(assessmentResult))
 
@@ -292,9 +298,15 @@ export default function AssessmentPage() {
         setIsFinished(true)
       } else {
         // ── Next question ────────────────────────────────────────────────────
-        const nextLevel = getNextLevel(newAnswers, currentLevel)
+        // When entering a new op phase, reset level to age-appropriate starting point
+        const nextQI = questionIndex + 1
+        const curPhase = Math.floor(questionIndex / QUESTIONS_PER_PHASE)
+        const nextPhase = Math.floor(nextQI / QUESTIONS_PER_PHASE)
+        const nextLevel = nextPhase > curPhase
+          ? getStartingLevel(profile?.age ?? 8)
+          : getNextLevel(newAnswers.slice(curPhase * QUESTIONS_PER_PHASE), currentLevel)
         setCurrentLevel(nextLevel)
-        setProblem(generateProblem(nextLevel))
+        setProblem(generateProblem(nextLevel, nextQI))
         setQuestionIndex(qi => qi + 1)
         setTimeElapsed(0)
         startTimeRef.current = Date.now()
@@ -458,10 +470,19 @@ export default function AssessmentPage() {
               )}
             </AnimatePresence>
 
-            {/* Label */}
-            <p className="text-gray-400 text-xs font-bold tracking-widest uppercase mb-3">
-              บวกให้ได้เลย!
-            </p>
+            {/* Label — current operation */}
+            {(() => {
+              const ph = phaseOf(questionIndex)
+              const phIdx = Math.floor(questionIndex / QUESTIONS_PER_PHASE)
+              return (
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <span className="text-xl">{ph.emoji}</span>
+                  <span className="text-gray-500 text-xs font-black tracking-widest uppercase">
+                    {ph.label} — ช่วงที่ {phIdx + 1}/{ASSESSMENT_PHASES.length}
+                  </span>
+                </div>
+              )
+            })()}
 
             {/* Numbers */}
             <div className="flex flex-col items-end pr-8 mb-2 gap-1">
@@ -469,7 +490,7 @@ export default function AssessmentPage() {
                 {problem.a.toLocaleString()}
               </span>
               <div className="flex items-center gap-3">
-                <span className="text-4xl font-black text-violet-500">+</span>
+                <span className="text-4xl font-black text-violet-500">{phaseOf(questionIndex).op === 'add' ? '+' : phaseOf(questionIndex).op === 'sub' ? '−' : phaseOf(questionIndex).op === 'mul' ? '×' : '÷'}</span>
                 <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
                   {problem.b.toLocaleString()}
                 </span>

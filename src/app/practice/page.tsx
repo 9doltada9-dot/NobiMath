@@ -16,7 +16,7 @@ import {
   skillEmoji,
 } from '@/lib/adaptive'
 import { LEVEL_META, OP_META, ALL_OPS } from '@/lib/types'
-import type { Profile, Problem, AnswerRecord, PracticeSession, SkillStats, Op } from '@/lib/types'
+import type { Profile, Problem, AnswerRecord, PracticeSession, SkillStats, Op, SessionRecord } from '@/lib/types'
 import {
   applySession,
   loadLifetime,
@@ -28,7 +28,8 @@ import {
   TROPHIES,
   type UnlockedMap,
 } from '@/lib/trophies'
-import { saveProfile, savePracticeSession } from '@/lib/supabase'
+import { saveProfile, savePracticeSession, callAnalyzeSession } from '@/lib/supabase'
+import type { AIFeedback } from '@/lib/types'
 
 const TOTAL_QUESTIONS = 10
 const EXP_PER_CORRECT = 10
@@ -300,6 +301,13 @@ function DashboardScreen({
           </button>
 
           <button
+            onClick={() => window.location.href = '/history'}
+            className="w-full text-blue-300 text-xs font-semibold hover:text-blue-500 transition-colors py-1"
+          >
+            {'📅 ประวัติการฝึก'}
+          </button>
+
+          <button
             onClick={onReset}
             className="w-full text-gray-300 text-xs font-semibold hover:text-gray-500 transition-colors py-1"
           >
@@ -551,6 +559,8 @@ function ResultScreen({
   expGained,
   leveledUp,
   unlockedTrophyIds,
+  aiFeedback,
+  aiFeedbackLoading,
   onPlayAgain,
   onHome,
 }: {
@@ -559,6 +569,8 @@ function ResultScreen({
   expGained: number
   leveledUp: boolean
   unlockedTrophyIds: string[]
+  aiFeedback: AIFeedback | null
+  aiFeedbackLoading: boolean
   onPlayAgain: () => void
   onHome: () => void
 }) {
@@ -673,15 +685,83 @@ function ResultScreen({
             ))}
           </div>
 
-          <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-3 mb-5 text-center">
-            <p className="text-yellow-700 font-bold text-sm">
-              {accuracy >= 90
-                ? `🌟 ยอดเยี่ยมมาก ${profile.nickname}! เก่งมากเลย!`
-                : accuracy >= 70
-                ? `👍 ดีมาก ${profile.nickname}! ฝึกต่อไปนะ!`
-                : `💪 ${profile.nickname} สู้ต่อไป! ฝึกบ่อยๆ เดี๋ยวเก่งแน่!`}
-            </p>
-          </div>
+          {/* AI Feedback */}
+          {(aiFeedbackLoading || aiFeedback) && (
+            <motion.div
+              className="bg-gradient-to-br from-violet-50 to-purple-50 border-2 border-violet-200 rounded-2xl p-4 mb-4"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">🤖</span>
+                <span className="text-xs font-black text-violet-700">Nobi AI วิเคราะห์</span>
+                {aiFeedbackLoading && (
+                  <motion.span
+                    className="text-xs text-violet-400 font-semibold"
+                    animate={{ opacity: [1, 0.3, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  >
+                    กำลังคิด...
+                  </motion.span>
+                )}
+              </div>
+
+              {aiFeedbackLoading && !aiFeedback && (
+                <div className="flex gap-1 justify-center py-2">
+                  {[0, 1, 2].map(i => (
+                    <motion.div
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-violet-400"
+                      animate={{ y: [0, -6, 0] }}
+                      transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {aiFeedback && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700">{aiFeedback.summary}</p>
+
+                  {aiFeedback.strengths.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-black text-emerald-600 mb-1">✅ จุดแข็ง</p>
+                      {aiFeedback.strengths.map((s, i) => (
+                        <p key={i} className="text-xs text-gray-600 leading-relaxed">• {s}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {aiFeedback.weaknesses.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-black text-amber-600 mb-1">🎯 ควรฝึกเพิ่ม</p>
+                      {aiFeedback.weaknesses.map((w, i) => (
+                        <p key={i} className="text-xs text-gray-600 leading-relaxed">• {w}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-2 bg-white rounded-xl px-3 py-2 text-center">
+                    <p className="text-sm font-black text-violet-600">{aiFeedback.encouragement}</p>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Static fallback encouragement (only when no AI) */}
+          {!aiFeedbackLoading && !aiFeedback && (
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-3 mb-4 text-center">
+              <p className="text-yellow-700 font-bold text-sm">
+                {accuracy >= 90
+                  ? `🌟 ยอดเยี่ยมมาก ${profile.nickname}! เก่งมากเลย!`
+                  : accuracy >= 70
+                  ? `👍 ดีมาก ${profile.nickname}! ฝึกต่อไปนะ!`
+                  : `💪 ${profile.nickname} สู้ต่อไป! ฝึกบ่อยๆ เดี๋ยวเก่งแน่!`}
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <motion.button
@@ -780,6 +860,8 @@ export default function PracticePage() {
   const [selectedOp, setSelectedOp] = useState<Op>('add')
   const [trophies, setTrophiesState] = useState<UnlockedMap>({})
   const [justUnlocked, setJustUnlocked] = useState<string[]>([])
+  const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null)
+  const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false)
 
   useEffect(() => {
     const rawProfile = localStorage.getItem('nobi_profile')
@@ -851,6 +933,22 @@ export default function PracticePage() {
     savePracticeSession(session).catch(() => {})
     saveProfile(updatedProfile).catch(() => {})
 
+    // Save to local session history
+    const histKey = `nobi_history_${profile.id}`
+    const hist: SessionRecord[] = JSON.parse(localStorage.getItem(histKey) ?? '[]')
+    hist.push({
+      id: `s_${Date.now()}`,
+      date: new Date().toISOString(),
+      op: selectedOp,
+      score: correctCount,
+      total: answers.length,
+      accuracy,
+      avgTimeSeconds: calcAvgTime(answers),
+      expGained: earned,
+      level: profile.level,
+    })
+    localStorage.setItem(histKey, JSON.stringify(hist.slice(-100)))
+
     // Lifetime stats + trophy unlocks.
     const life = applySession(loadLifetime(profile.id), answers, selectedOp, streak)
     saveLifetime(profile.id, life)
@@ -871,7 +969,21 @@ export default function PracticePage() {
     setSessionAnswers(answers)
     setExpGained(earned)
     setLeveledUp(didLevelUp)
+    setAiFeedback(null)
     setScreen('result')
+
+    // Call AI analysis asynchronously (non-blocking)
+    setAiFeedbackLoading(true)
+    callAnalyzeSession({
+      nickname: profile.nickname,
+      age: profile.age,
+      op: selectedOp,
+      level: profile.level,
+      answers,
+    })
+      .then(fb => setAiFeedback(fb))
+      .catch(() => setAiFeedback(null))
+      .finally(() => setAiFeedbackLoading(false))
   }
 
   function handleReset() {
@@ -908,8 +1020,10 @@ export default function PracticePage() {
         expGained={expGained}
         leveledUp={leveledUp}
         unlockedTrophyIds={justUnlocked}
-        onPlayAgain={() => setScreen('practice')}
-        onHome={() => setScreen('dashboard')}
+        aiFeedback={aiFeedback}
+        aiFeedbackLoading={aiFeedbackLoading}
+        onPlayAgain={() => { setAiFeedback(null); setScreen('practice') }}
+        onHome={() => { setAiFeedback(null); setScreen('dashboard') }}
       />
     )
   }
