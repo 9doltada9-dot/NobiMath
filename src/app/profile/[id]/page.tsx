@@ -1,5 +1,10 @@
 'use client'
 
+// Required for Next.js static export — profile IDs are loaded client-side from localStorage
+export function generateStaticParams() {
+  return []
+}
+
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
