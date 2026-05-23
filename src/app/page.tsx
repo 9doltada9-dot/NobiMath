@@ -288,7 +288,7 @@ export default function HomePage() {
                 {/* Profile link */}
                 <div className="px-4 pb-3">
                   <button
-                    onClick={() => router.push(`/profile/${profile.id}`)}
+                    onClick={() => router.push(`/profile?id=${profile.id}`)}
                     className="w-full text-center text-xs font-bold text-violet-400 hover:text-violet-600 py-1.5 border border-violet-100 rounded-xl hover:bg-violet-50 transition-colors"
                   >
                     📊 ดูโปรไฟล์และสถิติ
@@ -345,4 +345,6 @@ export default function HomePage() {
       </div>
     </div>
   )
+}
+
 }

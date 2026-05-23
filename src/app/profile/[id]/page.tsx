@@ -1,14 +1,11 @@
-// Server component wrapper — required for generateStaticParams with static export
-// All UI logic is in ProfilePageClient.tsx ('use client')
-import ProfilePageClient from './ProfilePageClient'
+// Server wrapper — generateStaticParams requires a server component
+// Redirect logic is in ProfileRedirect (client component)
+import ProfileRedirect from './ProfileRedirect'
 
 export function generateStaticParams() {
-  // Static export requires at least 1 entry.
-  // Actual profile IDs are loaded client-side from localStorage.
-  // All navigation is client-side (router.push), so this placeholder is never used directly.
   return [{ id: '_' }]
 }
 
-export default function ProfilePage() {
-  return <ProfilePageClient />
+export default function ProfilePageLegacy() {
+  return <ProfileRedirect />
 }
