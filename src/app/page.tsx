@@ -11,6 +11,7 @@ import type { Profile } from '@/lib/types'
 import { getAuthUser, authSignOut } from '@/lib/auth'
 import { fullSync } from '@/lib/sync'
 import type { AuthUser } from '@/lib/auth'
+import { APP_VERSION, APP_VERSION_NAME } from '@/lib/version'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
 
@@ -289,6 +290,14 @@ export default function HomePage() {
           <span className="text-2xl">＋</span>
           <span>เพิ่มผู้ใช้ใหม่</span>
         </motion.button>
+
+        {/* Version badge */}
+        <motion.p
+          className="text-center text-white/30 text-[10px] font-bold mt-5 leading-relaxed"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+        >
+          v{APP_VERSION} · {APP_VERSION_NAME}
+        </motion.p>
 
       </div>
     </div>
