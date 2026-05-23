@@ -169,9 +169,9 @@ export default function HistoryPage() {
             ))}
           </div>
 
-          {/* Op distribution */}
+          {/* Op distribution — filter ops that have been practiced */}
           <div className="grid grid-cols-4 gap-2">
-            {ALL_OPS.map(op => {
+            {ALL_OPS.filter(op => (opCounts[op] ?? 0) > 0 || ['add','sub','mul','div'].includes(op)).map(op => {
               const meta = OP_META[op]
               const count = opCounts[op] ?? 0
               return (

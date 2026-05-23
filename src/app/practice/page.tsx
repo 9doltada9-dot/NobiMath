@@ -135,6 +135,7 @@ function DashboardScreen({
   onSwitchUser: () => void
   onReset: () => void
 }) {
+  const router = useRouter()
   const avatar = getAvatar(profile.avatar)
   const weakSkills = getWeakSkills(skillStats, selectedOp).slice(0, 3)
   const mathLevelMeta = LEVEL_META[profile.level - 1] ?? LEVEL_META[0]
@@ -330,14 +331,14 @@ function DashboardScreen({
           </button>
 
           <button
-            onClick={() => window.location.href = '/history'}
+            onClick={() => router.push('/history')}
             className="w-full text-blue-300 text-xs font-semibold hover:text-blue-500 transition-colors py-1"
           >
             {'📅 ประวัติการฝึก'}
           </button>
 
           <button
-            onClick={() => window.location.href = '/assessment'}
+            onClick={() => router.push('/assessment')}
             className="w-full text-amber-400 text-xs font-semibold hover:text-amber-600 transition-colors py-1"
           >
             {'🎓 ทำแบบทดสอบวัดระดับ'}
