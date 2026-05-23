@@ -1183,4 +1183,6 @@ export default function PracticePage() {
       onStart={() => setScreen('practice')}
       onOpenTrophies={() => setScreen('trophies')}
       onSwitchUser={() => router.push('/')}
-    
+    />
+  )
+}
