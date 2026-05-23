@@ -3,9 +3,10 @@
 import ProfilePageClient from './ProfilePageClient'
 
 export function generateStaticParams() {
-  // Profile IDs are only known at runtime (localStorage).
-  // Client-side navigation handles all routes; no pages need pre-rendering.
-  return []
+  // Static export requires at least 1 entry.
+  // Actual profile IDs are loaded client-side from localStorage.
+  // All navigation is client-side (router.push), so this placeholder is never used directly.
+  return [{ id: '_' }]
 }
 
 export default function ProfilePage() {
