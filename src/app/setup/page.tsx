@@ -71,13 +71,20 @@ export default function SetupPage() {
     }
 
     localStorage.setItem('nobi_profile', JSON.stringify(profile))
+    localStorage.setItem('nobi_active_profile', profile.id)
+
+    // Add to profiles array
+    let profiles: Profile[] = []
+    try { profiles = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]') } catch { profiles = [] }
+    profiles.push(profile)
+    localStorage.setItem('nobi_profiles', JSON.stringify(profiles))
 
     // Save to Supabase (non-blocking — offline-safe)
     saveProfile(profile).catch(() => {})
 
     // Small delay for celebration feel
     await new Promise(r => setTimeout(r, 500))
-    router.push('/practice')
+    router.push('/')
   }
 
   return (

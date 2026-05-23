@@ -123,6 +123,7 @@ function DashboardScreen({
   trophyCount: number
   onStart: () => void
   onOpenTrophies: () => void
+  onSwitchUser: () => void
   onReset: () => void
 }) {
   const avatar = getAvatar(profile.avatar)
@@ -138,7 +139,7 @@ function DashboardScreen({
   useEffect(() => {
     const raw = localStorage.getItem('nobi_last_session')
     if (raw) setLastSession(JSON.parse(raw))
-    setStreak(parseInt(localStorage.getItem('nobi_streak') ?? '0', 10))
+    setStreak(parseInt(localStorage.getItem(`nobi_streak_${profile.id}`) ?? '0', 10))
   }, [])
 
   return (
@@ -289,6 +290,13 @@ function DashboardScreen({
             className="w-full bg-yellow-50 border border-yellow-200 text-yellow-700 font-black py-3 rounded-2xl mb-3 flex items-center justify-center gap-2 hover:bg-yellow-100 transition-colors"
           >
             {'🏆'} {'ถ้วยรางวัล'} <span className="text-yellow-500">({trophyCount}/{TROPHIES.length})</span>
+          </button>
+
+          <button
+            onClick={onSwitchUser}
+            className="w-full text-violet-400 text-xs font-semibold hover:text-violet-600 transition-colors py-1"
+          >
+            {'← เปลี่ยนผู้ใช้'}
           </button>
 
           <button
@@ -798,6 +806,12 @@ export default function PracticePage() {
 
     const updatedProfile: Profile = { ...profile, totalExp: newTotalExp }
     localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
+    // Sync to profiles array
+    try {
+      const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+      const idx = profiles.findIndex(p => p.id === updatedProfile.id)
+      if (idx >= 0) { profiles[idx] = updatedProfile; localStorage.setItem('nobi_profiles', JSON.stringify(profiles)) }
+    } catch { /* ignore */ }
 
     const accuracy = calcAccuracy(answers)
     localStorage.setItem('nobi_last_session', JSON.stringify({ accuracy, expGained: earned }))
@@ -808,14 +822,16 @@ export default function PracticePage() {
     saveSkillStats(profile.id, updatedStats)
 
     const today = new Date().toDateString()
-    const lastPractice = localStorage.getItem('nobi_last_practice_date')
-    let streak = parseInt(localStorage.getItem('nobi_streak') ?? '0', 10)
+    const streakKey = `nobi_streak_${profile.id}`
+    const lastPracticeKey = `nobi_last_practice_date_${profile.id}`
+    const lastPractice = localStorage.getItem(lastPracticeKey)
+    let streak = parseInt(localStorage.getItem(streakKey) ?? '0', 10)
     if (lastPractice !== today) {
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
       streak = lastPractice === yesterday.toDateString() ? streak + 1 : 1
-      localStorage.setItem('nobi_streak', String(streak))
-      localStorage.setItem('nobi_last_practice_date', today)
+      localStorage.setItem(streakKey, String(streak))
+      localStorage.setItem(lastPracticeKey, today)
     }
 
     const session: PracticeSession = {
@@ -911,6 +927,7 @@ export default function PracticePage() {
       trophyCount={Object.keys(trophies).length}
       onStart={() => setScreen('practice')}
       onOpenTrophies={() => setScreen('trophies')}
+      onSwitchUser={() => router.push('/')}
       onReset={handleReset}
     />
   )
