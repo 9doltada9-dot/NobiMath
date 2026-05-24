@@ -133,4 +133,51 @@ export async function callAnalyzeAssessment(params: AnalyzeAssessmentParams): Pr
     })
     if (!res.ok) {
       const err = await res.text()
-      console.warn
+      console.warn('[Supabase] analyze-assessment error:', err)
+      return null
+    }
+    const json = await res.json()
+    return json as AssessmentAIFeedback
+  } catch (e) {
+    console.warn('[Supabase] callAnalyzeAssessment failed:', e)
+    return null
+  }
+}
+
+// ─── Edge Function: analyze-session ──────────────────────────────────────────
+export interface AnalyzeSessionParams {
+  profileId: string
+  nickname: string
+  level: number
+  op: string
+  score: number
+  total: number
+  accuracy: number
+  avgTimeSeconds: number
+  answers: AnswerRecord[]
+}
+
+export async function callAnalyzeSession(params: AnalyzeSessionParams): Promise<AIFeedback | null> {
+  if (!isConfigured()) return null
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/analyze-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      console.warn('[Supabase] analyze-session error:', err)
+      return null
+    }
+    const json = await res.json()
+    return json as AIFeedback
+  } catch (e) {
+    console.warn('[Supabase] callAnalyzeSession failed:', e)
+    return null
+  }
+}

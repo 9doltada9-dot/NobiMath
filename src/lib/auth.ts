@@ -51,4 +51,45 @@ export async function handleAuthCallback(): Promise<AuthUser | null> {
     // Fallback: implicit flow (hash fragment)
     const { data } = await client().auth.getSession()
     if (data.session?.user) {
-      return { id: data.sess
+      return { id: data.session.user.id, email: data.session.user.email ?? '' }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function authSignIn(
+  email: string,
+  password: string
+): Promise<{ user: AuthUser | null; error: string | null }> {
+  if (!available()) return { user: null, error: 'Supabase not configured' }
+  try {
+    const { data, error } = await client().auth.signInWithPassword({ email, password })
+    if (error) return { user: null, error: error.message }
+    if (!data.user) return { user: null, error: 'ไม่ได้รับข้อมูลผู้ใช้' }
+    return { user: { id: data.user.id, email: data.user.email! }, error: null }
+  } catch (e: unknown) {
+    return { user: null, error: String(e) }
+  }
+}
+
+export async function getAuthUser(): Promise<AuthUser | null> {
+  if (!available()) return null
+  try {
+    const { data } = await client().auth.getSession()
+    if (data.session?.user) {
+      return { id: data.session.user.id, email: data.session.user.email ?? '' }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function authSignOut(): Promise<void> {
+  if (!available()) return
+  try {
+    await client().auth.signOut()
+  } catch { /* ignore */ }
+}
