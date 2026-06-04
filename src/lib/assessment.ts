@@ -7,21 +7,29 @@ import { generateProblem as genProblem } from './problems'
 export type AssessmentPhase = { op: Op; label: string; emoji: string }
 
 export const ALL_PHASES: AssessmentPhase[] = [
-  { op: 'add', label: 'บวก',  emoji: '➕' },
-  { op: 'sub', label: 'ลบ',   emoji: '➖' },
-  { op: 'mul', label: 'คูณ',  emoji: '✖️' },
-  { op: 'div', label: 'หาร',  emoji: '➗' },
+  { op: 'add',         label: 'บวก',     emoji: '➕' },
+  { op: 'sub',         label: 'ลบ',      emoji: '➖' },
+  { op: 'mul',         label: 'คูณ',     emoji: '✖️' },
+  { op: 'div',         label: 'หาร',     emoji: '➗' },
+]
+
+export const ALL_PHASES_ADVANCED: AssessmentPhase[] = [
+  ...ALL_PHASES,
+  { op: 'times_table', label: 'สูตรคูณ', emoji: '📊' },
+  { op: 'fraction',    label: 'เศษส่วน', emoji: '½' },
+  { op: 'decimal',     label: 'ทศนิยม',  emoji: '0.' },
 ]
 
 export function getAssessmentPhases(age: number): AssessmentPhase[] {
   if (age <= 6)  return ALL_PHASES.slice(0, 1)   // บวก เท่านั้น
   if (age <= 8)  return ALL_PHASES.slice(0, 2)   // บวก + ลบ
-  return ALL_PHASES                               // ทุกหัวข้อ (9+)
+  if (age <= 12) return ALL_PHASES               // บวก ลบ คูณ หาร
+  return ALL_PHASES_ADVANCED                     // ทุกวิชา (13+)
 }
 
 // Legacy export for backwards compat
 export const ASSESSMENT_PHASES = ALL_PHASES
-export const QUESTIONS_PER_PHASE = 5
+export const QUESTIONS_PER_PHASE = 8
 
 export function phaseOf(questionIndex: number, phases = ALL_PHASES) {
   const idx = Math.min(Math.floor(questionIndex / QUESTIONS_PER_PHASE), phases.length - 1)
@@ -64,25 +72,25 @@ export function getStartingLevel(age: number): number {
 
 // ─── Adaptive Next Level ──────────────────────────────────────────────────────
 // Returns the next level to use after each answer.
+// More aggressive: wrong/skip → DOWN immediately; 2 correct+fast → UP.
 export function getNextLevel(answers: AnswerRecord[], currentLevel: number): number {
-  if (answers.length < 2) return currentLevel
+  if (answers.length < 1) return currentLevel
 
-  const recent = answers.slice(-3)
-  const recentCount = recent.length
-  const correctCount = recent.filter(a => a.isCorrect).length
-  const fastCount = recent.filter(a => a.timeSeconds < 8).length
+  const last = answers[answers.length - 1]
 
-  // Level UP: 3 correct + at least 2 fast
-  if (recentCount === 3 && correctCount === 3 && fastCount >= 2) {
-    return Math.min(10, currentLevel + 1)
+  // Any wrong or skip → level DOWN immediately
+  if (!last.isCorrect) {
+    return Math.max(1, currentLevel - 1)
   }
 
-  const last2 = answers.slice(-2)
-  const wrong2 = last2.filter(a => !a.isCorrect).length
-
-  // Level DOWN: 2 consecutive wrong
-  if (last2.length === 2 && wrong2 === 2) {
-    return Math.max(1, currentLevel - 1)
+  // 2 consecutive correct + at least 1 fast → level UP
+  if (answers.length >= 2) {
+    const last2 = answers.slice(-2)
+    const bothCorrect = last2.every(a => a.isCorrect)
+    const fastCount = last2.filter(a => a.timeSeconds < 8).length
+    if (bothCorrect && fastCount >= 1) {
+      return Math.min(10, currentLevel + 1)
+    }
   }
 
   return currentLevel

@@ -1,8 +1,8 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.3.6'
-export const APP_VERSION_NAME = 'Fix: profile page 404 — use query param /profile?id= instead of dynamic route'
-export const BUILD_DATE = '2026-05-23'
+export const APP_VERSION = '1.4.0'
+export const APP_VERSION_NAME = 'UX: per-op level on buttons, recommended op, dots progress, per-question result'
+export const BUILD_DATE = '2026-06-03'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
 export interface VersionEntry {

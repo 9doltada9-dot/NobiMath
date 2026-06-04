@@ -32,6 +32,10 @@ import { saveProfile, savePracticeSession, callAnalyzeSession } from '@/lib/supa
 import { getAuthUser } from '@/lib/auth'
 import { pushSession } from '@/lib/sync'
 import type { AIFeedback } from '@/lib/types'
+import { computeMissionPlan, generateMissionProblems } from '@/lib/mission'
+import type { MissionPlan } from '@/lib/mission'
+import { getCurrentTier, getNextTier, getTierProgress, getAgeStyle } from '@/lib/tiers'
+import type { ExpTier, AgeStyle } from '@/lib/tiers'
 
 const TOTAL_QUESTIONS = 10
 const EXP_PER_CORRECT = 10
@@ -114,6 +118,174 @@ function Numpad({
   )
 }
 
+// ─── Character Emoji (age-sensitive animation) ────────────────────────────────
+function CharacterEmoji({ tier, ageStyle }: { tier: ExpTier; ageStyle: AgeStyle }) {
+  const sizeClass =
+    ageStyle === 'cartoon' ? 'text-7xl' :
+    ageStyle === 'vibrant' ? 'text-6xl' :
+    ageStyle === 'cool'    ? 'text-5xl' : 'text-4xl'
+
+  const animY =
+    ageStyle === 'cartoon' ? [0, -14, 0] :
+    ageStyle === 'vibrant' ? [0, -8, 0]  :
+    ageStyle === 'cool'    ? [0, -4, 0]  : [0, -1, 0]
+
+  const animDur =
+    ageStyle === 'cartoon' ? 1.3 :
+    ageStyle === 'vibrant' ? 2   :
+    ageStyle === 'cool'    ? 2.8 : 4
+
+  const rotateAnim =
+    ageStyle === 'cartoon' ? [-6, 6, -6] :
+    ageStyle === 'vibrant' ? [-3, 3, -3] : [0, 0, 0]
+
+  const showParticles = ageStyle !== 'sleek' && tier.rank >= 3
+  const particleCount = ageStyle === 'cartoon' ? Math.min(tier.particles.length, 3) : Math.min(tier.particles.length, 2)
+
+  return (
+    <div className="relative w-[76px] h-[76px] flex items-center justify-center flex-shrink-0">
+      {/* Aura glow */}
+      <motion.div
+        className={`absolute inset-0 rounded-full bg-gradient-to-br ${tier.color}`}
+        style={{ opacity: ageStyle === 'cartoon' ? 0.3 : ageStyle === 'vibrant' ? 0.2 : 0.12 }}
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {/* Character */}
+      <motion.span
+        className={`${sizeClass} select-none z-10`}
+        animate={{ y: animY, rotate: rotateAnim }}
+        transition={{ duration: animDur, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        {tier.emoji}
+      </motion.span>
+      {/* Floating particles */}
+      {showParticles && tier.particles.slice(0, particleCount).map((p, i) => {
+        const angle = (i / particleCount) * 360
+        const r = ageStyle === 'cartoon' ? 34 : 28
+        const cx = Math.cos((angle * Math.PI) / 180) * r
+        const cy = Math.sin((angle * Math.PI) / 180) * r
+        return (
+          <motion.span
+            key={i}
+            className="absolute text-xs select-none pointer-events-none"
+            style={{ top: '50%', left: '50%', marginTop: -8, marginLeft: -8 }}
+            animate={{
+              x: [cx, cx + Math.cos((angle + 90) * Math.PI / 180) * 6, cx],
+              y: [cy, cy + Math.sin((angle + 90) * Math.PI / 180) * 6, cy],
+              opacity: [0.4, 0.9, 0.4],
+              scale: [0.8, 1.1, 0.8],
+            }}
+            transition={{ duration: 2 + i * 0.6, repeat: Infinity, delay: i * 0.4, ease: 'easeInOut' }}
+          >
+            {p}
+          </motion.span>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Character Progression Card ───────────────────────────────────────────────
+function CharacterProgression({
+  totalExp, age, streak,
+}: {
+  totalExp: number
+  age: number
+  streak: number
+}) {
+  const tier     = getCurrentTier(totalExp)
+  const nextTier = getNextTier(totalExp)
+  const progress = getTierProgress(totalExp)
+  const ageStyle = getAgeStyle(age)
+  const expToNext = nextTier ? nextTier.minExp - totalExp : 0
+
+  return (
+    <div className="mb-4">
+      {/* ── Top row: character + info ── */}
+      <div className="flex items-center gap-3 mb-3">
+        <CharacterEmoji tier={tier} ageStyle={ageStyle} />
+        <div className="flex-1 min-w-0">
+          {/* Tier name */}
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <span
+              className={`text-xl font-black bg-gradient-to-r ${tier.color} bg-clip-text text-transparent leading-tight`}
+            >
+              {tier.name}
+            </span>
+            <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-1.5 py-0.5 rounded-full">
+              Tier {tier.rank}/10
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-400 font-semibold mb-1 leading-snug">{tier.description}</p>
+          {/* EXP — large and prominent */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-black text-violet-600 tabular-nums">
+              {totalExp.toLocaleString()}
+            </span>
+            <span className="text-xs font-black text-violet-400">EXP</span>
+            {streak >= 3 && (
+              <span className="ml-1 text-[10px] bg-orange-100 text-orange-600 font-black px-2 py-0.5 rounded-full">
+                🔥 {streak} วัน
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Progress road to next tier ── */}
+      {nextTier ? (
+        <div className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-black text-gray-500">🗺 เส้นทางสู่ {nextTier.name}</span>
+            <span className="text-[10px] font-bold text-violet-500 tabular-nums">
+              อีก {expToNext.toLocaleString()} EXP
+            </span>
+          </div>
+          {/* Road bar */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl flex-shrink-0">{tier.emoji}</span>
+            <div className="flex-1 relative h-5 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+              <motion.div
+                className={`h-full bg-gradient-to-r ${tier.color} rounded-full`}
+                initial={{ width: 0 }}
+                animate={{ width: `${progress * 100}%` }}
+                transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
+              />
+              {/* YOU marker */}
+              <motion.div
+                className="absolute top-0 bottom-0 flex items-center justify-center"
+                style={{ left: `clamp(4px, ${progress * 100}% - 10px, calc(100% - 24px))` }}
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 1.2, type: 'spring' }}
+              >
+                <div className="bg-white rounded-full px-1 py-0.5 shadow text-[9px] font-black text-violet-600 whitespace-nowrap">
+                  คุณ
+                </div>
+              </motion.div>
+            </div>
+            <span className="text-2xl flex-shrink-0">{nextTier.emoji}</span>
+          </div>
+          {/* Labels */}
+          <div className="flex justify-between">
+            <span className="text-[9px] text-gray-400 font-bold">{tier.minExp.toLocaleString()} EXP</span>
+            <span className="text-[9px] text-gray-400 font-bold">{nextTier.minExp.toLocaleString()} EXP</span>
+          </div>
+        </div>
+      ) : (
+        <motion.div
+          className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-2xl p-3 text-center"
+          animate={{ boxShadow: ['0 0 0 0 rgba(251,191,36,0)', '0 0 12px 4px rgba(251,191,36,0.4)', '0 0 0 0 rgba(251,191,36,0)'] }}
+          transition={{ duration: 2, repeat: Infinity }}
+        >
+          <p className="text-sm font-black text-amber-700">🌟 ถึงขั้นสูงสุดแล้ว — พระราชาแห่งคณิตศาสตร์! 👑</p>
+        </motion.div>
+      )}
+    </div>
+  )
+}
+
 function DashboardScreen({
   profile,
   skillStats,
@@ -123,6 +295,8 @@ function DashboardScreen({
   onStart,
   onOpenTrophies,
   onSwitchUser,
+  missionPlan,
+  onStartMission,
 }: {
   profile: Profile
   skillStats: SkillStats
@@ -132,6 +306,8 @@ function DashboardScreen({
   onStart: () => void
   onOpenTrophies: () => void
   onSwitchUser: () => void
+  missionPlan: MissionPlan | null
+  onStartMission: () => void
 }) {
   const router = useRouter()
   const avatar = getAvatar(profile.avatar)
@@ -141,6 +317,19 @@ function DashboardScreen({
   const expInLevel = getExpInCurrentLevel(profile.totalExp)
   const expToNext = getExpToNextLevel(profile.totalExp)
 
+  const recommendedOp: Op = (() => {
+    let rec: Op = 'add'
+    let minLvl = Infinity
+    for (const op of BASIC_OPS) {
+      const ageOk = profile.age <= 6 ? op === 'add' : profile.age <= 8 ? (op === 'add' || op === 'sub') : true
+      if (!ageOk) continue
+      const lvl = opLevel(profile, op)
+      if (lvl < minLvl) { minLvl = lvl; rec = op }
+    }
+    return rec
+  })()
+
+  const [showManual, setShowManual] = useState(false)
   const [lastSession, setLastSession] = useState<{ accuracy: number; expGained: number } | null>(null)
   const [streak, setStreak] = useState(0)
 
@@ -191,19 +380,7 @@ function DashboardScreen({
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 mb-4">
-            {[
-              { label: `ระดับ${OP_META[selectedOp].name}`, value: `${opLevel(profile, selectedOp)}/10`, emoji: OP_META[selectedOp].emoji },
-              { label: 'EXP รวม',   value: `${profile.totalExp}`, emoji: '⚡' },
-              { label: 'Streak',    value: `${streak} วัน`,        emoji: '🔥' },
-            ].map(stat => (
-              <div key={stat.label} className="bg-purple-50 rounded-2xl p-3 text-center">
-                <div className="text-xl mb-1">{stat.emoji}</div>
-                <div className="text-base font-black text-violet-700">{stat.value}</div>
-                <div className="text-xs text-gray-400 font-bold">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+          <CharacterProgression totalExp={profile.totalExp} age={profile.age} streak={streak} />
 
           {lastSession && (
             <motion.div
@@ -261,58 +438,139 @@ function DashboardScreen({
             </motion.div>
           )}
 
-          <p className="text-xs font-black text-gray-400 mb-2">{'วันนี้ฝึกอะไรดี'}?</p>
-          <div className="mb-1">
-            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">พื้นฐาน</p>
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {BASIC_OPS.map(op => {
-                const meta = OP_META[op]
-                const active = op === selectedOp
-                return (
-                  <motion.button
-                    key={op}
-                    onClick={() => onSelectOp(op)}
-                    whileTap={{ scale: 0.92 }}
-                    className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
-                      active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
-                    }`}
-                  >
-                    <span className="text-xl font-black leading-none">{meta.symbol}</span>
-                    <span className="text-[10px] font-bold mt-1">{meta.name}</span>
-                  </motion.button>
-                )
-              })}
-            </div>
-            <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">ขั้นสูง</p>
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {ADVANCED_OPS.map(op => {
-                const meta = OP_META[op]
-                const active = op === selectedOp
-                return (
-                  <motion.button
-                    key={op}
-                    onClick={() => onSelectOp(op)}
-                    whileTap={{ scale: 0.92 }}
-                    className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
-                      active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
-                    }`}
-                  >
-                    <span className="text-xl font-black leading-none">{meta.symbol}</span>
-                    <span className="text-[10px] font-bold mt-1">{meta.name}</span>
-                  </motion.button>
-                )
-              })}
-            </div>
-          </div>
+          {/* ─── ภารกิจวันนี้ (AI-curated mix) ─────────────────────────── */}
+          {!showManual && missionPlan && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-3"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-black text-gray-700">⚡ ภารกิจวันนี้</p>
+                <span className="text-[9px] font-bold text-violet-500 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full">
+                  🤖 AI แนะนำ
+                </span>
+              </div>
 
-          <motion.button
-            onClick={onStart}
-            className={`w-full bg-gradient-to-r ${OP_META[selectedOp].color} text-white font-extrabold text-xl py-5 rounded-2xl shadow-lg mb-3`}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-          >
-            {'🚀'} {'เริ่มฝึก'}{OP_META[selectedOp].name}!
-          </motion.button>
+              {/* Distribution pills */}
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {missionPlan.distribution.map(({ op, count }) => {
+                  const meta = OP_META[op]
+                  const lvl = opLevel(profile, op)
+                  return (
+                    <div key={op} className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5">
+                      <span className="text-sm">{meta.emoji}</span>
+                      <div>
+                        <span className="text-[11px] font-black text-gray-600">{meta.name}</span>
+                        <span className="text-[9px] text-gray-400 ml-1">Lv.{lvl}</span>
+                      </div>
+                      <span className="text-[11px] font-bold text-violet-500 ml-0.5">×{count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Reasoning */}
+              <p className="text-[10px] text-gray-400 font-semibold leading-relaxed mb-3">
+                {missionPlan.reasoning}
+              </p>
+
+              <motion.button
+                onClick={onStartMission}
+                className="w-full bg-gradient-to-r from-violet-500 to-pink-500 text-white font-extrabold text-xl py-5 rounded-2xl shadow-lg mb-2"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                🚀 เริ่มภารกิจ!
+              </motion.button>
+
+              <button
+                onClick={() => setShowManual(true)}
+                className="w-full text-gray-400 text-[11px] font-semibold hover:text-gray-600 transition-colors py-1"
+              >
+                เลือกวิชาเองก็ได้ ↓
+              </button>
+            </motion.div>
+          )}
+
+          {/* ─── เลือกเอง (manual) ──────────────────────────────────────── */}
+          {showManual && (
+            <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+              {missionPlan && (
+                <button
+                  onClick={() => setShowManual(false)}
+                  className="text-violet-400 text-[11px] font-bold hover:text-violet-600 transition-colors mb-3 flex items-center gap-1"
+                >
+                  ← ดูภารกิจวันนี้
+                </button>
+              )}
+              <p className="text-xs font-black text-gray-400 mb-2">วันนี้ฝึกอะไรดี?</p>
+              <div className="mb-1">
+                <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">พื้นฐาน</p>
+                <div className="grid grid-cols-4 gap-2 mb-3">
+                  {BASIC_OPS.map(op => {
+                    const meta = OP_META[op]
+                    const active = op === selectedOp
+                    const isRec = op === recommendedOp
+                    const lvl = opLevel(profile, op)
+                    return (
+                      <motion.button
+                        key={op}
+                        onClick={() => onSelectOp(op)}
+                        whileTap={{ scale: 0.92 }}
+                        className={`relative rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
+                          active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
+                        }`}
+                      >
+                        {isRec && !active && (
+                          <span className="absolute -top-1.5 -right-1 bg-amber-400 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                            แนะนำ
+                          </span>
+                        )}
+                        <span className="text-xl font-black leading-none">{meta.symbol}</span>
+                        <span className="text-[10px] font-bold mt-1">{meta.name}</span>
+                        <span className={`text-[9px] font-semibold mt-0.5 ${active ? 'text-white/70' : 'text-gray-400'}`}>
+                          Lv.{lvl}
+                        </span>
+                      </motion.button>
+                    )
+                  })}
+                </div>
+                <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-1.5">ขั้นสูง</p>
+                <div className="grid grid-cols-3 gap-2 mb-4">
+                  {ADVANCED_OPS.map(op => {
+                    const meta = OP_META[op]
+                    const active = op === selectedOp
+                    const lvl = opLevel(profile, op)
+                    return (
+                      <motion.button
+                        key={op}
+                        onClick={() => onSelectOp(op)}
+                        whileTap={{ scale: 0.92 }}
+                        className={`rounded-2xl py-2.5 flex flex-col items-center transition-colors ${
+                          active ? `bg-gradient-to-br ${meta.color} text-white shadow-md` : 'bg-gray-50 text-gray-500 border border-gray-100'
+                        }`}
+                      >
+                        <span className="text-xl font-black leading-none">{meta.symbol}</span>
+                        <span className="text-[10px] font-bold mt-1">{meta.name}</span>
+                        <span className={`text-[9px] font-semibold mt-0.5 ${active ? 'text-white/70' : 'text-gray-400'}`}>
+                          Lv.{lvl}
+                        </span>
+                      </motion.button>
+                    )
+                  })}
+                </div>
+              </div>
+              <motion.button
+                onClick={onStart}
+                className={`w-full bg-gradient-to-r ${OP_META[selectedOp].color} text-white font-extrabold text-xl py-5 rounded-2xl shadow-lg mb-3`}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                {'🚀'} {'เริ่มฝึก'}{OP_META[selectedOp].name}!
+              </motion.button>
+            </motion.div>
+          )}
 
           <button
             onClick={onOpenTrophies}
@@ -353,18 +611,23 @@ function PracticeScreen({
   op,
   initialStats,
   onFinish,
+  onExit,
+  problems: problemQueue,
 }: {
   profile: Profile
   op: Op
   initialStats: SkillStats
   onFinish: (answers: AnswerRecord[]) => void
+  onExit: () => void
+  problems?: Problem[]
 }) {
   // Live skill stats updated within the session so later questions adapt too.
   const liveStatsRef = useRef<SkillStats>(initialStats)
-  const currentOpLevel = opLevel(profile, op)
+  const isMission = !!problemQueue?.length
   const [problem, setProblem] = useState<Problem>(() =>
-    generateAdaptiveProblem(op, currentOpLevel, initialStats),
+    problemQueue?.length ? problemQueue[0] : generateAdaptiveProblem(op, opLevel(profile, op), initialStats),
   )
+  const currentOpLevel = opLevel(profile, problem.op ?? op)
   const [questionIndex, setQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -372,6 +635,11 @@ function PracticeScreen({
   const [timeElapsed, setTimeElapsed] = useState(0)
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [exitConfirm, setExitConfirm] = useState(false)
+  const localQueueRef = useRef<Problem[]>(problemQueue?.length ? [...problemQueue] : [])
+  const aiAdjustedRef = useRef(false)
+  const [aiAdjusted, setAiAdjusted] = useState(false)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (feedback) return
@@ -418,10 +686,43 @@ function PracticeScreen({
       setInputValue('')
       setFeedback(null)
 
-      if (questionIndex + 1 >= TOTAL_QUESTIONS) {
+      const totalQ = localQueueRef.current.length > 0 ? localQueueRef.current.length : TOTAL_QUESTIONS
+      if (questionIndex + 1 >= totalQ) {
         onFinish(newAnswers)
       } else {
-        setProblem(generateAdaptiveProblem(op, currentOpLevel, liveStatsRef.current))
+        // AI mid-session adaptation: 3 consecutive wrong → detect pattern + rebuild easier
+        if (!aiAdjustedRef.current) {
+          const recent3 = newAnswers.slice(-3)
+          if (recent3.length === 3 && recent3.every(a => !a.isCorrect)) {
+            aiAdjustedRef.current = true
+            setAiAdjusted(true)
+            const failOp = (recent3[recent3.length - 1].problem.op ?? op) as Op
+            const easierLvl = Math.max(1, opLevel(profile, failOp) - 1)
+            // Identify common tag for specific feedback
+            const tagCount: Record<string, number> = {}
+            recent3.flatMap(a => a.problem.tags ?? []).forEach(t => { tagCount[t] = (tagCount[t] ?? 0) + 1 })
+            const weakTag = Object.entries(tagCount).find(([, c]) => c >= 2)?.[0]
+            const tagMsg = weakTag ? ` เรื่อง "${skillLabel(weakTag)}"` : ''
+            setAiNotice(`🤖 Nobi ตรวจพบจุดที่ต้องฝึก${tagMsg} — ปรับโจทย์ให้ง่ายขึ้น ฝึกพื้นฐานก่อนแล้วค่อยยาก 💪`)
+            setTimeout(() => setAiNotice(null), 6000)
+            // Rebuild remaining queue at easier level
+            if (localQueueRef.current.length > questionIndex + 1) {
+              const remaining = localQueueRef.current.length - questionIndex - 1
+              const adapted = Array.from({ length: remaining }, () =>
+                generateAdaptiveProblem(failOp, easierLvl, liveStatsRef.current)
+              )
+              localQueueRef.current = [
+                ...localQueueRef.current.slice(0, questionIndex + 1),
+                ...adapted,
+              ]
+            }
+          }
+        }
+
+        const next = localQueueRef.current.length > questionIndex + 1
+          ? localQueueRef.current[questionIndex + 1]
+          : generateAdaptiveProblem(op, opLevel(profile, problem.op ?? op), liveStatsRef.current)
+        setProblem(next)
         setQuestionIndex(qi => qi + 1)
         setTimeElapsed(0)
         startTimeRef.current = Date.now()
@@ -444,7 +745,8 @@ function PracticeScreen({
   }, [submitAnswer])
 
   const avatar = getAvatar(profile.avatar)
-  const progress = questionIndex / TOTAL_QUESTIONS
+  const totalQ = localQueueRef.current.length > 0 ? localQueueRef.current.length : TOTAL_QUESTIONS
+  const progress = questionIndex / totalQ
   const correctSoFar = answers.filter(a => a.isCorrect).length
   const timerColor =
     timeElapsed < 10 ? 'text-white' :
@@ -462,6 +764,12 @@ function PracticeScreen({
       <div className="w-full max-w-sm pt-2">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setExitConfirm(true)}
+              className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-black hover:bg-white/30 active:scale-95 transition-all"
+            >
+              ✕
+            </button>
             <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatar.color} flex items-center justify-center text-lg shadow-md`}>
               {avatar.emoji}
             </div>
@@ -476,22 +784,50 @@ function PracticeScreen({
           </motion.div>
           <div className="bg-white/20 rounded-xl px-3 py-1">
             <span className="text-white font-black text-sm">
-              {questionIndex + 1}<span className="opacity-60">/{TOTAL_QUESTIONS}</span>
+              {questionIndex + 1}<span className="opacity-60">/{totalQ}</span>
             </span>
           </div>
         </div>
 
-        <div className="h-3 bg-white/30 rounded-full overflow-hidden mb-1.5">
-          <motion.div
-            className="h-full bg-white rounded-full"
-            animate={{ width: `${progress * 100}%` }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-          />
+        <div className="flex items-center gap-1.5 justify-center mb-1.5">
+          {Array.from({ length: totalQ }, (_, i) => {
+            const ans = answers[i]
+            const isCurrent = i === questionIndex
+            return (
+              <motion.div
+                key={i}
+                animate={isCurrent ? { scale: [1, 1.25, 1] } : {}}
+                transition={{ duration: 0.8, repeat: isCurrent ? Infinity : 0 }}
+                className={`rounded-full transition-colors duration-300 ${
+                  ans
+                    ? (ans.isCorrect ? 'w-3 h-3 bg-green-400' : 'w-3 h-3 bg-red-400')
+                    : isCurrent ? 'w-3.5 h-3.5 bg-white'
+                    : 'w-2.5 h-2.5 bg-white/30'
+                }`}
+              />
+            )
+          })}
         </div>
         <div className="flex justify-between text-white/70 text-xs font-bold">
           <span>{'ระดับ'} {currentOpLevel}/10</span>
           <span>{'⚡'} +{correctSoFar * EXP_PER_CORRECT} EXP</span>
         </div>
+
+        {/* AI adaptation notice */}
+        <AnimatePresence>
+          {aiNotice && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden mt-2"
+            >
+              <div className="bg-white/20 border border-white/30 rounded-2xl px-3 py-2.5 text-white text-[11px] font-bold text-center leading-snug">
+                {aiNotice}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="w-full max-w-sm flex-1 flex items-center justify-center py-4">
@@ -546,9 +882,14 @@ function PracticeScreen({
                 </span>
               </div>
             ) : (
-              <p className="text-gray-400 text-xs font-bold tracking-widest uppercase mb-3">
-                {OP_META[op].name}{'ให้ได้เลย'}!
-              </p>
+              <div className="flex items-center justify-center gap-1.5 mb-3">
+                {isMission && (
+                  <span className="text-lg">{OP_META[problem.op ?? op].emoji}</span>
+                )}
+                <p className="text-gray-400 text-xs font-bold tracking-widest uppercase">
+                  {OP_META[problem.op ?? op].name}{'ให้ได้เลย'}!
+                </p>
+              </div>
             )}
 
             {/* ── Fraction display ── */}
@@ -593,7 +934,7 @@ function PracticeScreen({
                   {problem.a.toLocaleString()}
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="text-4xl font-black text-violet-500">{OP_META[op].symbol}</span>
+                  <span className="text-4xl font-black text-violet-500">{OP_META[problem.op ?? op].symbol}</span>
                   <span className="text-6xl font-black text-gray-800 font-mono tabular-nums">
                     {problem.b.toLocaleString()}
                   </span>
@@ -638,10 +979,47 @@ function PracticeScreen({
           value={inputValue}
           onChange={setInputValue}
           onSubmit={submitAnswer}
-          disabled={!!feedback}
+          disabled={!!feedback || exitConfirm}
           hasDecimal={problem.op === 'decimal'}
         />
       </div>
+
+      <AnimatePresence>
+        {exitConfirm && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            >
+              <p className="text-4xl mb-2">🤔</p>
+              <p className="font-black text-gray-700 text-xl mb-1">ออกจากการฝึกไหม?</p>
+              <p className="text-gray-400 text-sm mb-5">ข้อมูลเซสชั่นนี้จะไม่ถูกบันทึก</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setExitConfirm(false)}
+                  className="flex-1 bg-gray-100 text-gray-600 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition-colors"
+                >
+                  ฝึกต่อ 💪
+                </button>
+                <button
+                  onClick={onExit}
+                  className="flex-1 bg-gradient-to-r from-red-400 to-rose-500 text-white font-bold py-3.5 rounded-2xl shadow-md"
+                >
+                  ออกเลย ✕
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }
@@ -808,6 +1186,28 @@ function ResultScreen({
                 <div className="text-xs text-gray-400 font-bold">{stat.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* Per-question results */}
+          <div className="mb-4">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">ผลรายข้อ</p>
+            <div className="flex gap-2 flex-wrap justify-center">
+              {answers.map((a, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.05 * i + 0.4, type: 'spring' }}
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm border ${
+                    a.isCorrect
+                      ? 'bg-emerald-100 text-emerald-600 border-emerald-200'
+                      : 'bg-red-100 text-red-500 border-red-200'
+                  }`}
+                >
+                  {a.isCorrect ? '✓' : '✗'}
+                </motion.div>
+              ))}
+            </div>
           </div>
 
           {/* AI Feedback */}
@@ -989,6 +1389,9 @@ export default function PracticePage() {
   const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false)
   const [opLeveledUp, setOpLeveledUp] = useState(false)
   const [opLeveledDown, setOpLeveledDown] = useState(false)
+  const [missionPlan, setMissionPlan] = useState<MissionPlan | null>(null)
+  const [missionProblems, setMissionProblems] = useState<Problem[]>([])
+  const [isMission, setIsMission] = useState(false)
 
   useEffect(() => {
     const rawProfile = localStorage.getItem('nobi_profile')
@@ -999,8 +1402,25 @@ export default function PracticePage() {
       localStorage.setItem('nobi_assessment', JSON.stringify({ determinedLevel: p.level ?? 1 }))
     }
     setProfile(p)
-    setSkillStats(loadSkillStats(p.id))
+    const stats = loadSkillStats(p.id)
+    setSkillStats(stats)
     setTrophiesState(loadTrophies(p.id))
+
+    // Compute today's mission plan
+    const plan = computeMissionPlan(p, stats)
+    setMissionPlan(plan)
+    setMissionProblems(generateMissionProblems(plan, p, stats))
+
+    // Auto-select the op with the lowest level for this age group
+    let rec: Op = 'add'
+    let minLvl = Infinity
+    for (const op of BASIC_OPS) {
+      const ageOk = p.age <= 6 ? op === 'add' : p.age <= 8 ? (op === 'add' || op === 'sub') : true
+      if (!ageOk) continue
+      const lvl = opLevel(p, op)
+      if (lvl < minLvl) { minLvl = lvl; rec = op }
+    }
+    setSelectedOp(rec)
   }, [router])
 
   async function handlePracticeFinish(answers: AnswerRecord[]) {
@@ -1014,12 +1434,25 @@ export default function PracticePage() {
     const newGameLevel = getGameLevel(newTotalExp)
     const didLevelUp = newGameLevel > oldGameLevel
 
-    // Auto-adjust op level based on performance
-    const curOpLevel = opLevel(profile, selectedOp)
+    // Auto-adjust level per op — handles both single-op and mission (mixed) sessions
+    const newOpLevels = { ...(profile.opLevels ?? {}) }
+    const opGroups: Partial<Record<Op, AnswerRecord[]>> = {}
+    for (const a of answers) {
+      const o = (a.problem.op ?? selectedOp) as Op
+      opGroups[o] = [...(opGroups[o] ?? []), a]
+    }
+    let curOpLevel = opLevel(profile, selectedOp)
     let nextOpLevel = curOpLevel
-    if (accuracy >= 90 && calcAvgTime(answers) < 10) nextOpLevel = Math.min(10, curOpLevel + 1)
-    else if (accuracy < 50) nextOpLevel = Math.max(1, curOpLevel - 1)
-    const newOpLevels = { ...(profile.opLevels ?? {}), [selectedOp]: nextOpLevel }
+    ;(Object.entries(opGroups) as [Op, AnswerRecord[]][]).forEach(([o, opAnswers]) => {
+      const oAcc = calcAccuracy(opAnswers)
+      const oAvg = calcAvgTime(opAnswers)
+      const curLvl = opLevel(profile, o)
+      let nextLvl = curLvl
+      if (oAcc >= 90 && oAvg < 10) nextLvl = Math.min(10, curLvl + 1)
+      else if (oAcc < 50) nextLvl = Math.max(1, curLvl - 1)
+      newOpLevels[o] = nextLvl
+      if (o === selectedOp) { curOpLevel = curLvl; nextOpLevel = nextLvl }
+    })
 
     const updatedProfile: Profile = { ...profile, totalExp: newTotalExp, opLevels: newOpLevels }
     localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
@@ -1118,10 +1551,14 @@ export default function PracticePage() {
     // Call AI analysis asynchronously (non-blocking)
     setAiFeedbackLoading(true)
     callAnalyzeSession({
+      profileId: profile.id,
       nickname: profile.nickname,
-      age: profile.age,
       op: selectedOp,
-      level: profile.level,
+      level: curOpLevel,
+      score: correctCount,
+      total: answers.length,
+      accuracy,
+      avgTimeSeconds: calcAvgTime(answers),
       answers,
     })
       .then(fb => setAiFeedback(fb))
@@ -1147,7 +1584,7 @@ export default function PracticePage() {
   }
 
   if (screen === 'practice') {
-    return <PracticeScreen profile={profile} op={selectedOp} initialStats={skillStats} onFinish={handlePracticeFinish} />
+    return <PracticeScreen profile={profile} op={selectedOp} initialStats={skillStats} onFinish={handlePracticeFinish} onExit={() => { setIsMission(false); setScreen('dashboard') }} problems={isMission ? missionProblems : undefined} />
   }
 
   if (screen === 'result') {
@@ -1180,9 +1617,11 @@ export default function PracticePage() {
       selectedOp={selectedOp}
       onSelectOp={setSelectedOp}
       trophyCount={Object.keys(trophies).length}
-      onStart={() => setScreen('practice')}
+      onStart={() => { setIsMission(false); setScreen('practice') }}
       onOpenTrophies={() => setScreen('trophies')}
       onSwitchUser={() => router.push('/')}
+      missionPlan={missionPlan}
+      onStartMission={() => { setIsMission(true); setScreen('practice') }}
     />
   )
 }

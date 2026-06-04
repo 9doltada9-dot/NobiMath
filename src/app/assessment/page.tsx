@@ -201,7 +201,7 @@ function IntroScreen({ profile, phases, onStart, onBack }: {
           </motion.button>
 
           <p className="text-center text-gray-300 text-[10px] font-semibold -mt-1">
-            ⏱ ใช้เวลาประมาณ {totalQ <= 10 ? '3–5' : '5–10'} นาที
+            ⏱ ใช้เวลาประมาณ {totalQ <= 10 ? '3–5' : totalQ <= 20 ? '5–8' : totalQ <= 32 ? '8–12' : '12–20'} นาที
           </p>
         </div>
       </motion.div>
@@ -467,6 +467,7 @@ export default function AssessmentPage() {
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
   const [inputValue, setInputValue] = useState('')
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null)
+  const [lastWasSkip, setLastWasSkip] = useState(false)
   const [isFinished, setIsFinished] = useState(false)
   const [result, setResult] = useState<AssessmentResult | null>(null)
   const [aiFeedback, setAiFeedback] = useState<AssessmentAIFeedback | null>(null)
@@ -591,6 +592,69 @@ export default function AssessmentPage() {
     }, 700)
   }, [problem, feedback, inputValue, answers, questionIndex, currentLevel, profile, phases, totalQuestions])
 
+  const handleSkip = useCallback(() => {
+    if (!problem || feedback) return
+    if (timerRef.current) clearInterval(timerRef.current)
+    const elapsed = (Date.now() - startTimeRef.current) / 1000
+    const record: AnswerRecord = {
+      problem,
+      userAnswer: null,
+      isCorrect: false,
+      timeSeconds: Math.round(elapsed * 10) / 10,
+      skipped: true,
+    }
+    setFeedback('wrong')
+    setLastWasSkip(true)
+    setTimeout(() => {
+      const newAnswers = [...answers, record]
+      setAnswers(newAnswers)
+      setInputValue('')
+      setFeedback(null)
+      setLastWasSkip(false)
+      if (questionIndex + 1 >= totalQuestions) {
+        const determinedLevel = calculateFinalLevel(newAnswers)
+        const perOpLevels = calculatePerOpLevels(newAnswers, phases)
+        const assessmentResult: AssessmentResult = {
+          profileId: profile?.id ?? '',
+          determinedLevel,
+          accuracy: calcAccuracy(newAnswers),
+          avgTimeSeconds: calcAvgTime(newAnswers),
+          totalQuestions,
+          answers: newAnswers,
+          completedAt: new Date().toISOString(),
+          perOpLevels,
+        }
+        localStorage.setItem('nobi_assessment', JSON.stringify(assessmentResult))
+        if (profile) {
+          const updatedProfile = { ...profile, level: determinedLevel, opLevels: perOpLevels }
+          localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
+          try {
+            const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+            const idx = profiles.findIndex(p => p.id === updatedProfile.id)
+            if (idx >= 0) { profiles[idx] = updatedProfile; localStorage.setItem('nobi_profiles', JSON.stringify(profiles)) }
+          } catch { /* ignore */ }
+          saveSkillStats(profile.id, recordAnswers(loadSkillStats(profile.id), newAnswers))
+          saveAssessmentResult(assessmentResult).catch(() => {})
+          saveProfile(updatedProfile).catch(() => {})
+        }
+        setResult(assessmentResult)
+        setIsFinished(true)
+      } else {
+        const nextQI = questionIndex + 1
+        const curPhase = Math.floor(questionIndex / QUESTIONS_PER_PHASE)
+        const nextPhase = Math.floor(nextQI / QUESTIONS_PER_PHASE)
+        const nextLevel = nextPhase > curPhase
+          ? getStartingLevel(profile?.age ?? 8)
+          : getNextLevel(newAnswers.slice(curPhase * QUESTIONS_PER_PHASE), currentLevel)
+        setCurrentLevel(nextLevel)
+        setProblem(generateProblem(nextLevel, nextQI, phases))
+        setQuestionIndex(qi => qi + 1)
+        setTimeElapsed(0)
+        startTimeRef.current = Date.now()
+      }
+    }, 900)
+  }, [problem, feedback, answers, questionIndex, currentLevel, profile, phases, totalQuestions])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (showIntro) return
@@ -706,9 +770,9 @@ export default function AssessmentPage() {
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 >
                   <motion.span className="text-7xl" initial={{ scale: 0 }} animate={{ scale: [0, 1.3, 1] }} transition={{ duration: 0.4 }}>
-                    {feedback === 'correct' ? '🌟' : '💪'}
+                    {feedback === 'correct' ? '🌟' : lastWasSkip ? '➡️' : '💪'}
                   </motion.span>
-                  <motion.p className={`absolute bottom-6 text-lg font-black ${feedback === 'correct' ? 'text-green-600' : 'text-red-500'}`}
+                  <motion.p className={`absolute bottom-6 text-lg font-black ${feedback === 'correct' ? 'text-green-600' : lastWasSkip ? 'text-gray-500' : 'text-red-500'}`}
                     initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   >
                     {feedback === 'correct' ? 'ถูกต้อง! เยี่ยมมาก!' : `คำตอบคือ ${problem.answer}`}
@@ -758,6 +822,16 @@ export default function AssessmentPage() {
           {encouragement}
         </motion.p>
         <Numpad value={inputValue} onChange={setInputValue} onSubmit={submitAnswer} disabled={!!feedback} />
+        <motion.button
+          onClick={handleSkip}
+          disabled={!!feedback}
+          className="w-full text-white/40 text-xs font-bold py-1.5 hover:text-white/70 transition-colors disabled:opacity-0 flex items-center justify-center gap-1.5"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: feedback ? 0 : 1 }}
+        >
+          <span>ไม่รู้ / ข้ามข้อนี้</span>
+          <span className="text-white/30">→</span>
+        </motion.button>
       </div>
     </motion.div>
   )

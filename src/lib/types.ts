@@ -75,6 +75,7 @@ export interface AnswerRecord {
   userAnswer: number | null
   isCorrect: boolean
   timeSeconds: number
+  skipped?: boolean
 }
 
 // ─── Assessment ───────────────────────────────────────────────────────────────
