@@ -118,6 +118,70 @@ function Numpad({
   )
 }
 
+// ─── Fatigue Detection ────────────────────────────────────────────────────────
+type FatigueLevel = 'none' | 'mild' | 'moderate' | 'severe'
+
+function getMaxSessionSeconds(age: number): number {
+  if (age <= 6)  return 15 * 60
+  if (age <= 8)  return 20 * 60
+  if (age <= 10) return 25 * 60
+  if (age <= 12) return 30 * 60
+  if (age <= 15) return 40 * 60
+  return 50 * 60
+}
+
+function calculateFatigue(
+  answers: AnswerRecord[],
+  sessionDurationSeconds: number,
+  age: number,
+): FatigueLevel {
+  if (answers.length < 4) return 'none'
+
+  let score = 0
+
+  // 1. Accuracy decline: last 3 vs previous window
+  const last3 = answers.slice(-3)
+  const prev3 = answers.slice(-6, -3)
+  if (prev3.length >= 2) {
+    const lastAcc = last3.filter(a => a.isCorrect).length / last3.length
+    const prevAcc = prev3.filter(a => a.isCorrect).length / prev3.length
+    if (lastAcc < prevAcc - 0.33) score += 25
+  }
+
+  // 2. Speed decline: last 3 avg vs earlier avg
+  const last3Times = last3.map(a => a.timeSeconds)
+  const earlyTimes = answers.slice(0, -3).map(a => a.timeSeconds)
+  if (earlyTimes.length >= 3) {
+    const lastAvg = last3Times.reduce((s, t) => s + t, 0) / last3Times.length
+    const earlyAvg = earlyTimes.reduce((s, t) => s + t, 0) / earlyTimes.length
+    if (earlyAvg > 0 && lastAvg > earlyAvg * 2.0) score += 20
+    else if (earlyAvg > 0 && lastAvg > earlyAvg * 1.5) score += 10
+  }
+
+  // 3. Fast wrong = guessing (answered < 2.5s but still wrong)
+  const fastWrong = last3.filter(a => !a.isCorrect && a.timeSeconds < 2.5 && !a.skipped)
+  score += fastWrong.length * 12
+
+  // 4. Session duration vs age-appropriate limit
+  const maxSec = getMaxSessionSeconds(age)
+  const ratio = sessionDurationSeconds / maxSec
+  if (ratio >= 1.0) score += 35
+  else if (ratio >= 0.8) score += 20
+  else if (ratio >= 0.65) score += 10
+
+  // 5. All wrong in last 5 after earlier success (real performance crash)
+  if (answers.length >= 8) {
+    const last5 = answers.slice(-5)
+    const early = answers.slice(0, 3)
+    if (last5.every(a => !a.isCorrect) && early.some(a => a.isCorrect)) score += 20
+  }
+
+  if (score >= 55) return 'severe'
+  if (score >= 30) return 'moderate'
+  if (score >= 15) return 'mild'
+  return 'none'
+}
+
 // ─── Character Emoji (age-sensitive animation) ────────────────────────────────
 function CharacterEmoji({ tier, ageStyle }: { tier: ExpTier; ageStyle: AgeStyle }) {
   const sizeClass =
@@ -640,6 +704,10 @@ function PracticeScreen({
   const aiAdjustedRef = useRef(false)
   const [aiAdjusted, setAiAdjusted] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
+  const sessionStartRef = useRef(Date.now())
+  const lastFatigueModalRef = useRef<FatigueLevel>('none')
+  const [fatigueLevel, setFatigueLevel] = useState<FatigueLevel>('none')
+  const [showBreakModal, setShowBreakModal] = useState(false)
 
   useEffect(() => {
     if (feedback) return
@@ -685,6 +753,18 @@ function PracticeScreen({
       setAnswers(newAnswers)
       setInputValue('')
       setFeedback(null)
+
+      // ── Fatigue detection ──
+      const sessionSec = (Date.now() - sessionStartRef.current) / 1000
+      const newFatigue = calculateFatigue(newAnswers, sessionSec, profile.age)
+      setFatigueLevel(newFatigue)
+      if (
+        (newFatigue === 'moderate' || newFatigue === 'severe') &&
+        newFatigue !== lastFatigueModalRef.current
+      ) {
+        lastFatigueModalRef.current = newFatigue
+        setShowBreakModal(true)
+      }
 
       const totalQ = localQueueRef.current.length > 0 ? localQueueRef.current.length : TOTAL_QUESTIONS
       if (questionIndex + 1 >= totalQ) {
@@ -776,11 +856,21 @@ function PracticeScreen({
             <span className="text-white font-extrabold text-sm">{profile.nickname}</span>
           </div>
           <motion.div
-            className={`font-black text-xl tabular-nums ${timerColor}`}
+            className={`font-black text-xl tabular-nums ${timerColor} flex items-center gap-1`}
             animate={timeElapsed >= 20 ? { scale: [1, 1.1, 1] } : {}}
             transition={{ duration: 0.5, repeat: timeElapsed >= 20 ? Infinity : 0 }}
           >
             {'⏱'} {timeElapsed}s
+            {fatigueLevel === 'mild' && (
+              <motion.span
+                className="text-base"
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                title="ดูเหมือนเหนื่อยนิดหน่อย"
+              >
+                🥱
+              </motion.span>
+            )}
           </motion.div>
           <div className="bg-white/20 rounded-xl px-3 py-1">
             <span className="text-white font-black text-sm">
@@ -1016,6 +1106,97 @@ function PracticeScreen({
                   ออกเลย ✕
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Break / fatigue recommendation modal ── */}
+      <AnimatePresence>
+        {showBreakModal && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+            >
+              <motion.div
+                className="text-5xl mb-3"
+                animate={{ rotate: fatigueLevel === 'severe' ? [-5, 5, -5] : 0 }}
+                transition={{ duration: 0.5, repeat: fatigueLevel === 'severe' ? Infinity : 0 }}
+              >
+                {fatigueLevel === 'severe' ? '😵' : '😴'}
+              </motion.div>
+
+              <h3 className="font-black text-gray-700 text-xl mb-1">
+                {fatigueLevel === 'severe' ? 'เหนื่อยมากแล้วนะ!' : 'เหนื่อยหน่อยแล้วนะ'}
+              </h3>
+              <p className="text-gray-400 text-sm font-semibold mb-2 leading-snug">
+                {fatigueLevel === 'severe'
+                  ? 'ระบบตรวจพบว่าสมองต้องการพักผ่อน\nการฝึกต่อตอนนี้อาจไม่ได้ผลดีเท่า'
+                  : 'ทำมาได้ดีมากแล้ว!\nลองพักสักครู่ก่อนดีไหม?'}
+              </p>
+
+              {/* Stats bar */}
+              <div className="bg-gray-50 rounded-2xl p-3 mb-5 flex justify-center gap-4 text-center">
+                <div>
+                  <div className="text-lg font-black text-violet-600">{answers.filter(a => a.isCorrect).length}</div>
+                  <div className="text-[9px] text-gray-400 font-bold">ถูก</div>
+                </div>
+                <div className="w-px bg-gray-200" />
+                <div>
+                  <div className="text-lg font-black text-gray-500">{answers.length}</div>
+                  <div className="text-[9px] text-gray-400 font-bold">ข้อทำแล้ว</div>
+                </div>
+                <div className="w-px bg-gray-200" />
+                <div>
+                  <div className="text-lg font-black text-emerald-600">
+                    {answers.length > 0 ? Math.round((answers.filter(a => a.isCorrect).length / answers.length) * 100) : 0}%
+                  </div>
+                  <div className="text-[9px] text-gray-400 font-bold">แม่นยำ</div>
+                </div>
+              </div>
+
+              {fatigueLevel === 'severe' ? (
+                <div className="space-y-2">
+                  <motion.button
+                    onClick={() => { setShowBreakModal(false); onFinish(answers) }}
+                    className="w-full bg-gradient-to-r from-violet-500 to-pink-500 text-white font-extrabold py-4 rounded-2xl shadow-md text-base"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    จบวันนี้และบันทึกผล 👍
+                  </motion.button>
+                  <button
+                    onClick={() => setShowBreakModal(false)}
+                    className="w-full text-gray-400 text-xs font-bold py-2 hover:text-gray-600 transition-colors"
+                  >
+                    ทำต่อ (ไม่แนะนำ)
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowBreakModal(false)}
+                    className="flex-1 bg-gray-100 text-gray-600 font-bold py-3.5 rounded-2xl hover:bg-gray-200 transition-colors"
+                  >
+                    ทำต่อ 💪
+                  </button>
+                  <motion.button
+                    onClick={() => { setShowBreakModal(false); onExit() }}
+                    className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 text-white font-bold py-3.5 rounded-2xl shadow-md"
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    พักก่อน 💤
+                  </motion.button>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
