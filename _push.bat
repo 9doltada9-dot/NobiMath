@@ -1,59 +1,83 @@
 @echo off
-title Nobi Skill - Push to GitHub
-cd /d "D:\OneDrive\Project\Claude\Nobi Skill\Nobi Skill"
+chcp 65001 > nul
+title Nobi Skill — Push to GitHub
+cd /d "%~dp0"
 
-echo ============================================================
-echo    Nobi Skill  -  Push to GitHub (NobiMath)
-echo ============================================================
+echo.
+echo  ╔══════════════════════════════════════════════════════════╗
+echo  ║         Nobi Skill  —  Push to GitHub (NobiMath)        ║
+echo  ╠══════════════════════════════════════════════════════════╣
+echo  ║  Version bump rules:                                     ║
+echo  ║    feat: ...     →  MINOR  (X.Y+1.0)  new feature       ║
+echo  ║    fix: ...      →  PATCH  (X.Y.Z+1)  bug fix           ║
+echo  ║    refactor: ... →  PATCH              code cleanup      ║
+echo  ║    style: ...    →  PATCH              UI only           ║
+echo  ║    breaking: ... →  MAJOR  (X+1.0.0)  breaking change   ║
+echo  ╚══════════════════════════════════════════════════════════╝
 echo.
 
-:: [1/5] Ask for change description (English only to avoid cmd encoding issues)
-set /p CHANGE_DESC=Change description (press Enter to skip):
-if "%CHANGE_DESC%"=="" set CHANGE_DESC=Bug fixes and improvements
-
-:: [2/5] Bump version
+:: ── [1] Read current version ──────────────────────────────────────────────────
+for /f "tokens=3 delims='" %%v in ('findstr "APP_VERSION = " src\lib\version.ts') do set CUR_VER=%%v
+echo  Current version : v%CUR_VER%
 echo.
-echo [2/5] Bumping version...
+
+:: ── [2] Show what changed since last commit ────────────────────────────────────
+echo  [2/5] Recent commits:
+git log --oneline -6
+echo.
+echo  Changed files (uncommitted):
+git diff --stat HEAD
+git status --short
+echo.
+
+:: ── [2.5] Change description ────────────────────────────────────────────────────
+set /p CHANGE_DESC= Change description (e.g. "feat: Daily Mission"):
+if "%CHANGE_DESC%"=="" set CHANGE_DESC=fix: Bug fixes and improvements
+echo.
+
+:: ── [3] Bump version ──────────────────────────────────────────────────────────
+echo  [3/5] Bumping version...
+echo  ( feat: → MINOR   fix/refactor/style: → PATCH   breaking: → MAJOR )
+echo.
+for /f "delims=" %%i in ('node _bump.cjs "%CHANGE_DESC%" 2^>^&1') do (
+  echo  %%i
+  set BUMP_OUT=%%i
+)
+:: Last line is the new version (stdout), earlier lines are stderr info
 for /f "delims=" %%i in ('node _bump.cjs "%CHANGE_DESC%"') do set NEW_VER=%%i
 if "%NEW_VER%"=="" (
-  echo ERROR: _bump.cjs failed - check Node.js is installed
-  pause
-  exit /b 1
+  echo.
+  echo  ERROR: _bump.cjs failed — is Node.js installed?
+  pause & exit /b 1
 )
-echo     New version: v%NEW_VER%
+echo.
+echo  ✓ v%CUR_VER%  →  v%NEW_VER%
+echo.
 
-:: [3/5] Build check
-echo.
-echo [3/5] Running next build...
-echo.
-call npx next build
+:: ── [4] Build ─────────────────────────────────────────────────────────────────
+echo  [4/5] Building...
+call npx next build 2>nul
 if %ERRORLEVEL% neq 0 (
   echo.
-  echo ============================================================
-  echo    BUILD FAILED - fix errors before pushing
-  echo    (version.ts was bumped - just run _push.bat again)
-  echo ============================================================
+  echo  ✗ BUILD FAILED — fix errors before pushing.
+  echo    (version.ts already bumped to v%NEW_VER% — just re-run)
   echo.
-  pause
-  exit /b 1
+  pause & exit /b 1
 )
-
-:: [4/5] Git commit
+echo  ✓ Build OK
 echo.
-echo [4/5] git add + commit...
+
+:: ── [5] Git commit + push ─────────────────────────────────────────────────────
+echo  [5/5] Committing and pushing...
 git add -A
 git commit -m "v%NEW_VER%: %CHANGE_DESC%"
-
-:: [5/5] Git push
-echo.
-echo [5/5] git push...
 git push
-
 echo.
-echo ============================================================
-echo    Done!  v%NEW_VER% deployed
-echo    Actions: https://github.com/9doltada9-dot/NobiMath/actions
-echo    Site:    https://9doltada9-dot.github.io/NobiMath/
-echo ============================================================
+
+echo  ╔══════════════════════════════════════════════════════════╗
+echo  ║  ✓ Done!  v%NEW_VER% deployed                                ║
+echo  ║  Actions: https://github.com/9doltada9-dot/NobiMath/actions ║
+echo  ║  Site:    https://9doltada9-dot.github.io/NobiMath/         ║
+echo  ╚══════════════════════════════════════════════════════════╝
 echo.
 pause

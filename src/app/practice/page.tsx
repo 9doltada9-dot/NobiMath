@@ -182,6 +182,187 @@ function calculateFatigue(
   return 'none'
 }
 
+// ─── Calculation Hint ─────────────────────────────────────────────────────────
+/** Column-math visual for addition (with carry) and subtraction (with borrow). */
+function ColumnMath({ a, b, op }: { a: number; b: number; op: 'add' | 'sub' }) {
+  const ans = op === 'add' ? a + b : a - b
+  const n = Math.max(String(a).length, String(b).length, String(Math.abs(ans)).length)
+  const pad = (x: number) => String(Math.abs(x)).padStart(n, ' ')
+  const aS = pad(a).split('')
+  const bS = pad(b).split('')
+  const rS = pad(ans).split('')
+
+  // Carries (add) or borrows (sub)
+  const carries: (string | null)[] = Array(n).fill(null)
+  const borrowedFrom: boolean[] = Array(n).fill(false) // tens+ col that was decremented
+  const needBorrow: boolean[] = Array(n).fill(false)    // units col that needed borrow
+
+  if (op === 'add') {
+    let carry = 0
+    for (let i = n - 1; i >= 0; i--) {
+      const ad = parseInt(aS[i]) || 0
+      const bd = parseInt(bS[i]) || 0
+      const sum = ad + bd + carry
+      carry = sum >= 10 ? 1 : 0
+      if (carry && i - 1 >= 0) carries[i - 1] = '1'
+    }
+  } else {
+    let borrow = 0
+    for (let i = n - 1; i >= 0; i--) {
+      const ad = (parseInt(aS[i]) || 0) - borrow
+      const bd = parseInt(bS[i]) || 0
+      if (ad < bd) { needBorrow[i] = true; borrow = 1; if (i - 1 >= 0) borrowedFrom[i - 1] = true }
+      else borrow = 0
+    }
+  }
+
+  const cell = 'w-7 text-center inline-block text-xl font-black'
+  return (
+    <div className="font-mono select-none">
+      {/* carry row */}
+      {op === 'add' && carries.some(c => c) && (
+        <div className="flex justify-end mb-0.5">
+          {carries.map((c, i) => (
+            <span key={i} className={`${cell} text-xs text-rose-500`}>{c ?? ''}</span>
+          ))}
+        </div>
+      )}
+      {/* a row */}
+      <div className="flex justify-end">
+        {aS.map((d, i) => (
+          <span key={i} className={`${cell} ${borrowedFrom[i] ? 'text-orange-400' : 'text-gray-800'}`}>
+            {borrowedFrom[i] ? (parseInt(d) - 1).toString() : d}
+          </span>
+        ))}
+      </div>
+      {/* operator + b row */}
+      <div className="flex items-center">
+        <span className="w-5 text-right text-lg font-black text-violet-500 mr-0.5">
+          {op === 'add' ? '+' : '−'}
+        </span>
+        <div className="flex">
+          {bS.map((d, i) => (
+            <span key={i} className={`${cell} ${needBorrow[i] ? 'text-red-500 font-black' : 'text-gray-800'}`}>{d}</span>
+          ))}
+        </div>
+      </div>
+      {/* divider */}
+      <div className="border-t-2 border-gray-400 my-1 mx-5" />
+      {/* result */}
+      <div className="flex justify-end">
+        {rS.map((d, i) => <span key={i} className={`${cell} text-violet-600`}>{d}</span>)}
+      </div>
+    </div>
+  )
+}
+
+function calcHintExplanation(a: number, b: number, op: 'add' | 'sub'): string[] {
+  const steps: string[] = []
+  const n = Math.max(String(a).length, String(b).length)
+  const colNames = ['หลักหน่วย', 'หลักสิบ', 'หลักร้อย', 'หลักพัน']
+
+  if (op === 'add') {
+    let carry = 0
+    for (let i = n - 1; i >= 0; i--) {
+      const ad = Math.floor(a / Math.pow(10, n - 1 - i)) % 10
+      const bd = Math.floor(b / Math.pow(10, n - 1 - i)) % 10
+      const sum = ad + bd + carry
+      const col = colNames[n - 1 - i] ?? `หลักที่ ${n - i}`
+      if (sum >= 10) {
+        steps.push(`${col}: ${ad}+${bd}${carry > 0 ? `+${carry}(ทด)` : ''}=${sum} → เขียน ${sum % 10} ทด 1`)
+        carry = 1
+      } else {
+        steps.push(`${col}: ${ad}+${bd}${carry > 0 ? `+${carry}(ทด)` : ''}=${sum}`)
+        carry = 0
+      }
+    }
+  } else {
+    let borrow = 0
+    for (let i = n - 1; i >= 0; i--) {
+      const col = colNames[n - 1 - i] ?? `หลักที่ ${n - i}`
+      let ad = Math.floor(a / Math.pow(10, n - 1 - i)) % 10
+      const bd = Math.floor(b / Math.pow(10, n - 1 - i)) % 10
+      ad -= borrow
+      if (ad < bd) {
+        steps.push(`${col}: ${ad}<${bd} → ยืม 1 จาก${colNames[n - i] ?? 'หลักถัดไป'}: ${ad + 10}−${bd}=${ad + 10 - bd}`)
+        borrow = 1
+      } else {
+        steps.push(`${col}: ${ad}−${bd}=${ad - bd}${borrow > 0 ? ' (หลังยืม)' : ''}`)
+        borrow = 0
+      }
+    }
+  }
+  return steps.reverse()
+}
+
+interface CalcHintState { problem: Problem; next: Problem; newAnswers: AnswerRecord[]; newIndex: number }
+
+function CalcHintModal({ state, onContinue }: { state: CalcHintState; onContinue: () => void }) {
+  const { problem } = state
+  const op = (problem.op ?? 'add') as Op
+  const showColumn = (op === 'add' || op === 'sub') &&
+    (problem.tags?.includes('add-carry') || problem.tags?.includes('sub-borrow'))
+  const steps = showColumn
+    ? calcHintExplanation(problem.a, problem.b, op as 'add' | 'sub')
+    : []
+
+  return (
+    <motion.div
+      className="fixed inset-0 bg-indigo-900/75 flex items-center justify-center z-50 p-5"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
+        initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.85, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+      >
+        <div className="bg-gradient-to-r from-amber-400 to-orange-400 px-5 py-3 text-center">
+          <span className="text-3xl">💡</span>
+          <p className="text-white font-black text-base mt-1">วิธีคิด</p>
+        </div>
+        <div className="p-5">
+          {showColumn ? (
+            <>
+              <div className="flex justify-center mb-4">
+                <ColumnMath a={problem.a} b={problem.b} op={op as 'add' | 'sub'} />
+              </div>
+              {steps.length > 0 && (
+                <div className="space-y-1.5 mb-4">
+                  {steps.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="bg-violet-100 text-violet-600 text-[9px] font-black px-1.5 py-0.5 rounded-full mt-0.5 whitespace-nowrap">
+                        ขั้น {i + 1}
+                      </span>
+                      <p className="text-xs font-semibold text-gray-600">{s}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-gray-400 font-bold text-center mb-3">
+                {op === 'add' ? '📌 จำไว้: ถ้าผลบวกหลักหน่วย ≥ 10 ให้ทดเลขไปหลักสิบ'
+                              : '📌 จำไว้: ถ้าตัวตั้งน้อยกว่าตัวลบ ให้ยืม 1 จากหลักถัดไป'}
+              </p>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-3xl mb-2">{problem.a} {op === 'add' ? '+' : op === 'sub' ? '−' : op === 'mul' ? '×' : '÷'} {problem.b}</p>
+              <p className="text-2xl font-black text-violet-600">= {problem.answer}</p>
+            </div>
+          )}
+          <motion.button
+            onClick={onContinue}
+            className="w-full bg-gradient-to-r from-violet-500 to-pink-500 text-white font-extrabold py-4 rounded-2xl shadow-md text-base"
+            whileTap={{ scale: 0.97 }}
+          >
+            เข้าใจแล้ว ต่อไป →
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
 // ─── Character Emoji (age-sensitive animation) ────────────────────────────────
 function CharacterEmoji({ tier, ageStyle }: { tier: ExpTier; ageStyle: AgeStyle }) {
   const sizeClass =
@@ -708,6 +889,7 @@ function PracticeScreen({
   const lastFatigueModalRef = useRef<FatigueLevel>('none')
   const [fatigueLevel, setFatigueLevel] = useState<FatigueLevel>('none')
   const [showBreakModal, setShowBreakModal] = useState(false)
+  const [calcHint, setCalcHint] = useState<CalcHintState | null>(null)
 
   useEffect(() => {
     if (feedback) return
@@ -802,13 +984,31 @@ function PracticeScreen({
         const next = localQueueRef.current.length > questionIndex + 1
           ? localQueueRef.current[questionIndex + 1]
           : generateAdaptiveProblem(op, opLevel(profile, problem.op ?? op), liveStatsRef.current)
-        setProblem(next)
-        setQuestionIndex(qi => qi + 1)
-        setTimeElapsed(0)
-        startTimeRef.current = Date.now()
+
+        // Show calc hint if answered wrong on a carry/borrow problem
+        const shouldHint = !isCorrect && (
+          record.problem.tags?.includes('add-carry') || record.problem.tags?.includes('sub-borrow')
+        )
+        if (shouldHint) {
+          setCalcHint({ problem: record.problem, next, newAnswers, newIndex: questionIndex + 1 })
+        } else {
+          setProblem(next)
+          setQuestionIndex(qi => qi + 1)
+          setTimeElapsed(0)
+          startTimeRef.current = Date.now()
+        }
       }
     }, 700)
   }, [problem, feedback, inputValue, answers, questionIndex, profile.level, op, onFinish])
+
+  function dismissCalcHint() {
+    if (!calcHint) return
+    setProblem(calcHint.next)
+    setQuestionIndex(calcHint.newIndex)
+    setTimeElapsed(0)
+    startTimeRef.current = Date.now()
+    setCalcHint(null)
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1199,6 +1399,13 @@ function PracticeScreen({
               )}
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Calculation hint modal ── */}
+      <AnimatePresence>
+        {calcHint && (
+          <CalcHintModal state={calcHint} onContinue={dismissCalcHint} />
         )}
       </AnimatePresence>
     </motion.div>

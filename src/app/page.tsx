@@ -12,7 +12,7 @@ import type { Profile } from '@/lib/types'
 import { getAuthUser, authSignOut } from '@/lib/auth'
 import { fullSync } from '@/lib/sync'
 import type { AuthUser } from '@/lib/auth'
-import { APP_VERSION, APP_VERSION_NAME } from '@/lib/version'
+import { APP_VERSION, APP_VERSION_NAME, CHANGELOG } from '@/lib/version'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
 
@@ -90,6 +90,7 @@ export default function HomePage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [reminderNames, setReminderNames] = useState<string[]>([])
+  const [showChangelog, setShowChangelog] = useState(false)
 
   const buildCards = useCallback(() => {
     let profiles: Profile[] = []
@@ -410,15 +411,54 @@ export default function HomePage() {
           <span>เพิ่มผู้ใช้ใหม่</span>
         </motion.button>
 
-        {/* Version badge */}
-        <motion.p
-          className="text-center text-white/30 text-[10px] font-bold mt-5 leading-relaxed"
+        {/* Version badge — clickable changelog */}
+        <motion.button
+          onClick={() => setShowChangelog(true)}
+          className="w-full text-center text-white/50 text-[10px] font-bold mt-5 leading-relaxed hover:text-white/80 transition-colors"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
         >
           v{APP_VERSION} · {APP_VERSION_NAME}
-        </motion.p>
+        </motion.button>
 
       </div>
+
+      {/* Changelog modal */}
+      <AnimatePresence>
+        {showChangelog && (
+          <motion.div
+            className="fixed inset-0 bg-black/60 flex items-end justify-center z-50 p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowChangelog(false)}
+          >
+            <motion.div
+              className="bg-white rounded-3xl w-full max-w-lg overflow-hidden"
+              initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-violet-500 to-pink-500 px-5 py-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-white font-black text-lg">📋 Version History</h2>
+                  <p className="text-white/80 text-xs font-semibold">Nobi Skill v{APP_VERSION}</p>
+                </div>
+                <button onClick={() => setShowChangelog(false)} className="text-white/70 hover:text-white text-2xl font-black leading-none">✕</button>
+              </div>
+              <div className="overflow-y-auto max-h-[55vh] p-4 space-y-3">
+                {CHANGELOG.map(entry => (
+                  <div key={entry.version} className="border-b border-gray-100 pb-3 last:border-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="bg-violet-100 text-violet-700 text-[10px] font-black px-2 py-0.5 rounded-full">v{entry.version}</span>
+                      <span className="text-gray-400 text-[10px] font-semibold">{entry.date}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">{entry.name}</p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   )
 }
