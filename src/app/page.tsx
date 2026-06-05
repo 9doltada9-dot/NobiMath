@@ -93,6 +93,8 @@ export default function HomePage() {
   const [reminderNames, setReminderNames] = useState<string[]>([])
   const [showChangelog, setShowChangelog] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const authUserRef = useRef<AuthUser | null>(null)
 
   const buildCards = useCallback(() => {
     let profiles: Profile[] = []
@@ -129,6 +131,7 @@ export default function HomePage() {
       // Check auth
       const user = await getAuthUser()
       setAuthUser(user)
+      authUserRef.current = user
 
       const { profiles, data } = buildCards()
 
@@ -155,6 +158,8 @@ export default function HomePage() {
         const { data: freshData } = buildCards()
         setCards(freshData)
         setSyncing(false)
+        const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+        setLastSyncTime(now)
         const syncParts = []
         if (result.profilesPulled > 0) syncParts.push(`${result.profilesPulled} โปรไฟล์`)
         if (result.sessionsNewLocal > 0) syncParts.push(`${result.sessionsNewLocal} session ใหม่`)
@@ -167,6 +172,36 @@ export default function HomePage() {
     init()
   }, [router, buildCards])
 
+  // Auto-sync when tab/app comes back into focus (e.g. switch from phone → computer)
+  useEffect(() => {
+    let lastVisible = Date.now()
+    const RESYNC_COOLDOWN = 60_000  // at most once per minute on refocus
+
+    function onVisibility() {
+      if (document.visibilityState !== 'visible') return
+      const gap = Date.now() - lastVisible
+      lastVisible = Date.now()
+      if (gap < RESYNC_COOLDOWN) return  // was hidden < 1 min, skip
+      const user = authUserRef.current
+      if (!user) return
+      setSyncing(true)
+      fullSync(user.id).then(result => {
+        const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+        setLastSyncTime(now)
+        const { data } = buildCards()
+        setCards(data)
+        setSyncing(false)
+        if (result.sessionsNewLocal > 0) {
+          setSyncMsg(`☁️ อัปเดต ${result.sessionsNewLocal} session จากเครื่องอื่น`)
+          setTimeout(() => setSyncMsg(null), 4000)
+        }
+      }).catch(() => setSyncing(false))
+    }
+
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [buildCards])
+
   async function handleSync() {
     if (!authUser || syncing) return
     setSyncing(true)
@@ -175,6 +210,8 @@ export default function HomePage() {
     const { data } = buildCards()
     setCards(data)
     setSyncing(false)
+    const now = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+    setLastSyncTime(now)
     const parts = []
     if (result.profilesPulled > 0) parts.push(`${result.profilesPulled} โปรไฟล์`)
     if (result.sessionsNewLocal > 0) parts.push(`${result.sessionsNewLocal} session ใหม่`)
@@ -241,13 +278,18 @@ export default function HomePage() {
           </button>
           {authUser ? (
               <>
-                <button
-                  onClick={handleSync}
-                  disabled={syncing}
-                  className="bg-white/20 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl hover:bg-white/30 transition-colors disabled:opacity-50"
-                >
-                  {syncing ? '⏳' : '☁️'} ซิงค์
-                </button>
+                <div className="flex flex-col items-center">
+                  <button
+                    onClick={handleSync}
+                    disabled={syncing}
+                    className="bg-white/20 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl hover:bg-white/30 transition-colors disabled:opacity-50"
+                  >
+                    {syncing ? '⏳' : '☁️'} ซิงค์
+                  </button>
+                  {lastSyncTime && !syncing && (
+                    <span className="text-white/40 text-[9px] font-bold mt-0.5">{lastSyncTime}</span>
+                  )}
+                </div>
                 <div className="bg-white/20 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
                   <span className="text-base">👤</span>
                   <div>
