@@ -835,7 +835,32 @@ function DashboardScreen({
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 flex flex-col items-center p-4 pt-5">
+
+      {/* Top bar: Home button */}
+      <div className="w-full max-w-sm flex items-center justify-between mb-3">
+        <motion.button
+          onClick={onSwitchUser}
+          className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white font-bold text-sm px-3 py-2 rounded-2xl transition-colors"
+          whileTap={{ scale: 0.95 }}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          🏠 หน้าหลัก
+        </motion.button>
+        <motion.button
+          onClick={onOpenTrophies}
+          className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white font-bold text-sm px-3 py-2 rounded-2xl transition-colors"
+          whileTap={{ scale: 0.95 }}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.1 }}
+        >
+          🏆 <span className="tabular-nums">{trophyCount}</span>
+        </motion.button>
+      </div>
+
       <motion.div
         className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
         initial={{ scale: 0.8, opacity: 0, y: 40 }}
@@ -1084,16 +1109,9 @@ function DashboardScreen({
 
           <button
             onClick={onOpenTrophies}
-            className="w-full bg-yellow-50 border border-yellow-200 text-yellow-700 font-black py-3 rounded-2xl mb-3 flex items-center justify-center gap-2 hover:bg-yellow-100 transition-colors"
+            className="w-full bg-yellow-50 border border-yellow-200 text-yellow-700 font-black py-3 rounded-2xl mb-2 flex items-center justify-center gap-2 hover:bg-yellow-100 transition-colors"
           >
-            {'🏆'} {'ถ้วยรางวัล'} <span className="text-yellow-500">({trophyCount}/{TROPHIES.length})</span>
-          </button>
-
-          <button
-            onClick={onSwitchUser}
-            className="w-full text-violet-400 text-xs font-semibold hover:text-violet-600 transition-colors py-1"
-          >
-            {'← เปลี่ยนผู้ใช้'}
+            🏆 ถ้วยรางวัล <span className="text-yellow-500">({trophyCount}/{TROPHIES.length})</span>
           </button>
 
           <button

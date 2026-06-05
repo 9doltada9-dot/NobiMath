@@ -1,7 +1,7 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.6.0'
-export const APP_VERSION_NAME = 'feat: 9 new features — SRS, error classifier, attention SM, warm-up, speed challenge, number bond, contextual, mastery, weekly report'
+export const APP_VERSION = '1.6.1'
+export const APP_VERSION_NAME = 'style: add home button to practice dashboard and history page'
 export const BUILD_DATE = '2026-06-05'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  { version: '1.6.1', name: 'style: add home button to practice dashboard and history page', date: '2026-06-05' },
   { version: '1.6.0', name: 'feat: 9 new features — SRS, error classifier, attention SM, warm-up, speed challenge, number bond, contextual, mastery, weekly report', date: '2026-06-05' },
   { version: '1.5.0', name: 'feat: version modal, rename user, attention analysis, calc hints (carry/borrow)', date: '2026-06-04' },
   { version: '1.3.6', name: 'Fix: profile page 404 — use query param /profile?id= instead of dynamic route', date: '2026-05-23' },

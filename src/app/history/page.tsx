@@ -130,13 +130,21 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-4">
       <div className="max-w-lg mx-auto pt-4 pb-8">
 
-        {/* Back */}
-        <button
-          onClick={() => router.push('/practice')}
-          className="text-white/70 text-sm font-bold mb-4 flex items-center gap-1 hover:text-white"
-        >
-          ← กลับฝึก
-        </button>
+        {/* Nav row */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => router.push('/')}
+            className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white font-bold text-sm px-3 py-2 rounded-2xl transition-colors"
+          >
+            🏠 หน้าหลัก
+          </button>
+          <button
+            onClick={() => router.push('/practice')}
+            className="text-white/70 text-sm font-bold flex items-center gap-1 hover:text-white"
+          >
+            ฝึกต่อ →
+          </button>
+        </div>
 
         {/* Title */}
         <motion.div
