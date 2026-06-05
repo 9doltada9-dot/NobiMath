@@ -92,6 +92,7 @@ export async function pushProfile(profile: Profile, userId: string): Promise<voi
 
     await db().from('profiles').upsert({
       id:             profile.id,
+      account_id:     userId,   // NOT NULL column — same value as user_id
       user_id:        userId,
       nickname:       profile.nickname,
       age:            profile.age,
@@ -125,6 +126,7 @@ export async function pushAllProfiles(userId: string): Promise<void> {
       const streak = parseInt(localStorage.getItem(`nobi_streak_${p.id}`) ?? '0', 10)
       return {
         id:             p.id,
+        account_id:     userId,   // NOT NULL column — same value as user_id
         user_id:        userId,
         nickname:       p.nickname,
         age:            p.age,
