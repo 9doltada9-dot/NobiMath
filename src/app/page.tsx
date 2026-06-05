@@ -13,6 +13,7 @@ import { getAuthUser, authSignOut } from '@/lib/auth'
 import { fullSync } from '@/lib/sync'
 import type { AuthUser } from '@/lib/auth'
 import { APP_VERSION, APP_VERSION_NAME, CHANGELOG } from '@/lib/version'
+import GuideModal from '@/components/GuideModal'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
 
@@ -91,6 +92,7 @@ export default function HomePage() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [reminderNames, setReminderNames] = useState<string[]>([])
   const [showChangelog, setShowChangelog] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
 
   const buildCards = useCallback(() => {
     let profiles: Profile[] = []
@@ -224,7 +226,14 @@ export default function HomePage() {
         >
           <h1 className="text-white font-black text-xl">🎓 Nobi Skill</h1>
           <div className="flex items-center gap-2">
-            {authUser ? (
+            <button
+            onClick={() => setShowGuide(true)}
+            className="bg-white/20 text-white text-xs font-black w-8 h-8 rounded-xl hover:bg-white/30 transition-colors flex items-center justify-center"
+            title="คู่มือการใช้งาน"
+          >
+            ?
+          </button>
+          {authUser ? (
               <>
                 <button
                   onClick={handleSync}
@@ -421,6 +430,11 @@ export default function HomePage() {
         </motion.button>
 
       </div>
+
+      {/* Guide modal */}
+      <AnimatePresence>
+        {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
 
       {/* Changelog modal */}
       <AnimatePresence>

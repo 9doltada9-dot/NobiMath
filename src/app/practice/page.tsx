@@ -37,6 +37,7 @@ import type { MissionPlan } from '@/lib/mission'
 import { getCurrentTier, getNextTier, getTierProgress, getAgeStyle } from '@/lib/tiers'
 import type { ExpTier, AgeStyle } from '@/lib/tiers'
 import { computeAttention, attentionLevelDelta } from '@/lib/attention'
+import GuideModal from '@/components/GuideModal'
 import type { AttentionState } from '@/lib/attention'
 import { updateMastery, loadMastery, saveMastery, MASTERY_STREAK, MASTERY_TIME } from '@/lib/mastery'
 import { getStoryContext } from '@/lib/problems'
@@ -804,6 +805,7 @@ function DashboardScreen({
   onStartMission: () => void
   onStartSpeed: () => void
 }) {
+  const [showGuide, setShowGuide] = useState(false)
   const router = useRouter()
   const avatar = getAvatar(profile.avatar)
   const weakSkills = getWeakSkills(skillStats, selectedOp).slice(0, 3)
@@ -849,16 +851,32 @@ function DashboardScreen({
         >
           🏠 หน้าหลัก
         </motion.button>
-        <motion.button
-          onClick={onOpenTrophies}
-          className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white font-bold text-sm px-3 py-2 rounded-2xl transition-colors"
-          whileTap={{ scale: 0.95 }}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          🏆 <span className="tabular-nums">{trophyCount}</span>
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <motion.button
+            onClick={() => setShowGuide(true)}
+            className="bg-white/20 hover:bg-white/30 text-white font-black text-sm w-9 h-9 rounded-2xl flex items-center justify-center transition-colors"
+            whileTap={{ scale: 0.95 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
+            title="คู่มือ"
+          >
+            ?
+          </motion.button>
+          <motion.button
+            onClick={onOpenTrophies}
+            className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white font-bold text-sm px-3 py-2 rounded-2xl transition-colors"
+            whileTap={{ scale: 0.95 }}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            🏆 <span className="tabular-nums">{trophyCount}</span>
+          </motion.button>
+        </div>
+
+        {/* Guide modal */}
+        <AnimatePresence>
+          {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
+        </AnimatePresence>
       </div>
 
       <motion.div
