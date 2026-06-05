@@ -7,6 +7,7 @@ import { AVATARS } from '@/lib/avatars'
 import type { Profile } from '@/lib/types'
 import { saveProfile } from '@/lib/supabase'
 import { getAuthUser } from '@/lib/auth'
+import { generateId } from '@/lib/uuid'
 
 // ─── Floating decoration emojis ───────────────────────────────────────────────
 const FLOATERS = ['⭐', '✨', '🌟', '💫', '🎈', '🎉', '⭐', '✨']
@@ -58,7 +59,7 @@ export default function SetupPage() {
     setIsSaving(true)
 
     const profile: Profile = {
-      id: `local_${Date.now()}`,
+      id: generateId(),
       nickname: nickname.trim(),
       age,
       avatar: selectedAvatar,

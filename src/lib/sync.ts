@@ -14,9 +14,71 @@ import type { SkillStats } from './types'
 import type { LifetimeStats } from './trophies'
 import type { UnlockedMap } from './trophies'
 import { emptyLifetime } from './trophies'
+import { generateId, isUUID } from './uuid'
 
 function db() { return supabase as NonNullable<typeof supabase> }
 function isReady(): boolean { return supabase !== null && (supabase as unknown) !== null }
+
+// ─── ID Migration ─────────────────────────────────────────────────────────────
+// Old profiles used `local_${Date.now()}` as ID — not a valid UUID.
+// Before syncing, migrate any such IDs to proper UUIDs and update all localStorage keys.
+
+const LS_KEYS_TO_RENAME = [
+  (id: string) => `nobi_history_${id}`,
+  (id: string) => `nobi_life_${id}`,
+  (id: string) => `nobi_trophies_${id}`,
+  (id: string) => `nobi_skills_${id}`,
+  (id: string) => `nobi_mastery_${id}`,
+  (id: string) => `nobi_streak_${id}`,
+  (id: string) => `nobi_last_practice_date_${id}`,
+]
+
+export function migrateProfileIds(): boolean {
+  if (typeof window === 'undefined') return false
+  const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+  const needsMigration = profiles.filter(p => !isUUID(p.id))
+  if (needsMigration.length === 0) return false
+
+  const idMap = new Map<string, string>()  // old → new
+  needsMigration.forEach(p => idMap.set(p.id, generateId()))
+
+  // Rename all localStorage keys for each migrated profile
+  for (const [oldId, newId] of idMap) {
+    for (const keyFn of LS_KEYS_TO_RENAME) {
+      const old = keyFn(oldId)
+      const nxt = keyFn(newId)
+      const val = localStorage.getItem(old)
+      if (val !== null) {
+        localStorage.setItem(nxt, val)
+        localStorage.removeItem(old)
+      }
+    }
+  }
+
+  // Update profile IDs in the profiles array
+  const updated = profiles.map(p =>
+    idMap.has(p.id) ? { ...p, id: idMap.get(p.id)! } : p
+  )
+  localStorage.setItem('nobi_profiles', JSON.stringify(updated))
+
+  // Update the active profile cache
+  const active = localStorage.getItem('nobi_active_profile')
+  if (active && idMap.has(active)) {
+    localStorage.setItem('nobi_active_profile', idMap.get(active)!)
+  }
+  const cached = localStorage.getItem('nobi_profile')
+  if (cached) {
+    try {
+      const cp: Profile = JSON.parse(cached)
+      if (idMap.has(cp.id)) {
+        localStorage.setItem('nobi_profile', JSON.stringify({ ...cp, id: idMap.get(cp.id)! }))
+      }
+    } catch { /* ignore */ }
+  }
+
+  console.log(`[Sync] Migrated ${idMap.size} profile IDs to UUID format`)
+  return true
+}
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
 
@@ -280,6 +342,9 @@ export interface SyncResult {
 }
 
 export async function fullSync(userId: string): Promise<SyncResult> {
+  // Step 0: Migrate any old-style `local_XXXXXX` IDs to proper UUIDs
+  migrateProfileIds()
+
   const localProfiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
   let sessionsNewLocal = 0
 
