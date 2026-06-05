@@ -1,7 +1,7 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.8.2'
-export const APP_VERSION_NAME = 'fix: account_id NOT NULL blocked every profile insert — fix DB + code'
+export const APP_VERSION = '1.9.0'
+export const APP_VERSION_NAME = 'feat: 3-step delete confirmation — swipe, modal warning, type name to confirm'
 export const BUILD_DATE = '2026-06-05'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  { version: '1.9.0', name: 'feat: 3-step delete confirmation — swipe, modal warning, type name to confirm', date: '2026-06-05' },
   { version: '1.8.2', name: 'fix: account_id NOT NULL blocked every profile insert — fix DB + code', date: '2026-06-05' },
   { version: '1.8.1', name: 'fix: profile ID was not UUID — auto-migrate local_XXXX to UUID, fix sync to Supabase', date: '2026-06-05' },
   { version: '1.8.0', name: 'feat: auto-sync on tab focus, show last sync time, merge strategy explained', date: '2026-06-05' },

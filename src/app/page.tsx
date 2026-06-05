@@ -95,6 +95,9 @@ export default function HomePage() {
   const [showGuide, setShowGuide] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
   const authUserRef = useRef<AuthUser | null>(null)
+  // Delete confirmation modal
+  const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
+  const [deleteInput, setDeleteInput] = useState('')
 
   const buildCards = useCallback(() => {
     let profiles: Profile[] = []
@@ -233,18 +236,34 @@ export default function HomePage() {
     router.push('/practice')
   }
 
-  function deleteProfile(profileId: string) {
+  function requestDelete(profile: Profile) {
+    setDeleteInput('')
+    setDeleteTarget(profile)
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return
     try {
       const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
-      const updated = profiles.filter(p => p.id !== profileId)
+      const updated = profiles.filter(p => p.id !== deleteTarget.id)
       localStorage.setItem('nobi_profiles', JSON.stringify(updated))
-      if (updated.length === 0) {
-        router.replace('/setup')
-      } else {
-        const { data } = buildCards()
-        setCards(data)
-      }
+      // Clean up all related localStorage keys
+      const keys = [
+        `nobi_history_${deleteTarget.id}`,
+        `nobi_life_${deleteTarget.id}`,
+        `nobi_trophies_${deleteTarget.id}`,
+        `nobi_skills_${deleteTarget.id}`,
+        `nobi_mastery_${deleteTarget.id}`,
+        `nobi_streak_${deleteTarget.id}`,
+        `nobi_last_practice_date_${deleteTarget.id}`,
+      ]
+      keys.forEach(k => localStorage.removeItem(k))
     } catch { /* ignore */ }
+    setDeleteTarget(null)
+    setDeleteInput('')
+    const { profiles, data } = buildCards()
+    if (profiles.length === 0) router.replace('/setup')
+    else setCards(data)
   }
 
   function addNew() { router.push('/setup') }
@@ -366,7 +385,7 @@ export default function HomePage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08, type: 'spring', stiffness: 200, damping: 20 }}
               >
-              <SwipeCard onDelete={() => deleteProfile(profile.id)}>
+              <SwipeCard onDelete={() => requestDelete(profile)}>
               <div className="w-full bg-white rounded-2xl shadow-lg overflow-hidden text-left">
                 {/* Top gradient bar — click → practice */}
                 <button
@@ -482,6 +501,102 @@ export default function HomePage() {
       {/* Guide modal */}
       <AnimatePresence>
         {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
+      </AnimatePresence>
+
+      {/* ── Delete Confirmation Modal ── */}
+      <AnimatePresence>
+        {deleteTarget && (() => {
+          const avatar = getAvatar(deleteTarget.avatar)
+          const nameMatch = deleteInput.trim() === deleteTarget.nickname
+          return (
+            <motion.div
+              className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-5"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            >
+              <motion.div
+                className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl"
+                initial={{ scale: 0.85, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.85, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 26 }}
+              >
+                {/* Red danger header */}
+                <div className="bg-gradient-to-r from-red-500 to-rose-600 p-5 text-center">
+                  <motion.div
+                    className="text-5xl mb-2"
+                    animate={{ rotate: [-3, 3, -3] }}
+                    transition={{ duration: 0.5, repeat: 3 }}
+                  >⚠️</motion.div>
+                  <h2 className="text-white font-black text-lg">ลบโปรไฟล์</h2>
+                  <p className="text-white/80 text-xs font-semibold mt-1">
+                    ข้อมูลทั้งหมดจะหายถาวร ไม่สามารถกู้คืนได้
+                  </p>
+                </div>
+
+                <div className="p-5">
+                  {/* Profile being deleted */}
+                  <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl p-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-xl">
+                      {avatar.emoji}
+                    </div>
+                    <div>
+                      <p className="font-black text-gray-800">{deleteTarget.nickname}</p>
+                      <p className="text-[10px] text-gray-400 font-semibold">
+                        อายุ {deleteTarget.age} ปี · {deleteTarget.totalExp} EXP
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* What will be lost */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-xs text-amber-800 font-semibold space-y-1">
+                    <p className="font-black text-amber-900 mb-1">สิ่งที่จะถูกลบ:</p>
+                    <p>📚 ประวัติการฝึกทั้งหมด</p>
+                    <p>⚡ EXP และ Level ทั้งหมด</p>
+                    <p>🏆 Trophy และ Mastery ทั้งหมด</p>
+                    <p>📊 ข้อมูลจุดอ่อนและสถิติ</p>
+                  </div>
+
+                  {/* Type to confirm */}
+                  <p className="text-xs text-gray-500 font-bold mb-1.5 text-center">
+                    พิมพ์ชื่อ <span className="text-red-600 font-black">"{deleteTarget.nickname}"</span> เพื่อยืนยัน
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteInput}
+                    onChange={e => setDeleteInput(e.target.value)}
+                    placeholder={`พิมพ์: ${deleteTarget.nickname}`}
+                    className="w-full border-2 border-gray-200 focus:border-red-400 rounded-2xl px-4 py-3 text-sm font-bold text-center outline-none transition-colors mb-4"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+
+                  {/* Action buttons */}
+                  <div className="space-y-2">
+                    <motion.button
+                      onClick={confirmDelete}
+                      disabled={!nameMatch}
+                      className={`w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all ${
+                        nameMatch
+                          ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg'
+                          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      }`}
+                      whileTap={nameMatch ? { scale: 0.97 } : {}}
+                    >
+                      🗑️ ลบถาวร
+                    </motion.button>
+                    <button
+                      onClick={() => { setDeleteTarget(null); setDeleteInput('') }}
+                      className="w-full py-3.5 rounded-2xl font-extrabold text-sm bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors"
+                    >
+                      ← ยกเลิก (ปลอดภัย)
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )
+        })()}
       </AnimatePresence>
 
       {/* Changelog modal */}
