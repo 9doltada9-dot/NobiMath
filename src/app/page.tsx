@@ -10,7 +10,7 @@ import { loadTrophies, TROPHIES } from '@/lib/trophies'
 import { LEVEL_META } from '@/lib/types'
 import type { Profile } from '@/lib/types'
 import { getAuthUser, authSignOut } from '@/lib/auth'
-import { fullSync } from '@/lib/sync'
+import { fullSync, deleteProfileFromCloud, markProfileDeleted } from '@/lib/sync'
 import type { AuthUser } from '@/lib/auth'
 import { APP_VERSION, APP_VERSION_NAME, CHANGELOG } from '@/lib/version'
 import GuideModal from '@/components/GuideModal'
@@ -243,22 +243,35 @@ export default function HomePage() {
 
   function confirmDelete() {
     if (!deleteTarget) return
+    const targetId = deleteTarget.id
+
     try {
+      // 1. Remove from localStorage profiles list
       const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
-      const updated = profiles.filter(p => p.id !== deleteTarget.id)
+      const updated = profiles.filter(p => p.id !== targetId)
       localStorage.setItem('nobi_profiles', JSON.stringify(updated))
-      // Clean up all related localStorage keys
+
+      // 2. Clean up all related localStorage keys
       const keys = [
-        `nobi_history_${deleteTarget.id}`,
-        `nobi_life_${deleteTarget.id}`,
-        `nobi_trophies_${deleteTarget.id}`,
-        `nobi_skills_${deleteTarget.id}`,
-        `nobi_mastery_${deleteTarget.id}`,
-        `nobi_streak_${deleteTarget.id}`,
-        `nobi_last_practice_date_${deleteTarget.id}`,
+        `nobi_history_${targetId}`,
+        `nobi_life_${targetId}`,
+        `nobi_trophies_${targetId}`,
+        `nobi_skills_${targetId}`,
+        `nobi_mastery_${targetId}`,
+        `nobi_streak_${targetId}`,
+        `nobi_last_practice_date_${targetId}`,
       ]
       keys.forEach(k => localStorage.removeItem(k))
+
+      // 3. Mark as deleted so sync won't pull it back
+      markProfileDeleted(targetId)
+
+      // 4. Delete from Supabase cloud (non-blocking, best-effort)
+      deleteProfileFromCloud(targetId).catch(() => {
+        // Will be cleaned up next time fullSync runs
+      })
     } catch { /* ignore */ }
+
     setDeleteTarget(null)
     setDeleteInput('')
     const { profiles, data } = buildCards()

@@ -80,7 +80,39 @@ export function migrateProfileIds(): boolean {
   return true
 }
 
+// ─── Deleted-profile tombstone ───────────────────────────────────────────────
+// When a profile is deleted locally we record its ID here so it doesn't come
+// back the next time fullSync pulls from cloud.
+const DELETED_KEY = 'nobi_deleted_profile_ids'
+
+export function markProfileDeleted(profileId: string): void {
+  if (typeof window === 'undefined') return
+  const ids: string[] = JSON.parse(localStorage.getItem(DELETED_KEY) ?? '[]')
+  if (!ids.includes(profileId)) {
+    ids.push(profileId)
+    localStorage.setItem(DELETED_KEY, JSON.stringify(ids))
+  }
+}
+
+function getDeletedIds(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_KEY) ?? '[]')) }
+  catch { return new Set() }
+}
+
 // ─── Profiles ─────────────────────────────────────────────────────────────────
+
+/** Delete a profile and all its session records from Supabase. */
+export async function deleteProfileFromCloud(profileId: string): Promise<void> {
+  if (!isReady()) return
+  try {
+    // session_records cascade-deleted by FK, but delete explicitly to be safe
+    await db().from('session_records').delete().eq('profile_id', profileId)
+    await db().from('profiles').delete().eq('id', profileId)
+    console.log('[Sync] Deleted profile from cloud:', profileId)
+  } catch (e) {
+    console.warn('[Sync] deleteProfileFromCloud failed:', e)
+  }
+}
 
 export async function pushProfile(profile: Profile, userId: string): Promise<void> {
   if (!isReady()) return
@@ -360,9 +392,20 @@ export async function fullSync(userId: string): Promise<SyncResult> {
   const cloudProfiles = await pullProfiles(userId)
 
   if (cloudProfiles.length > 0) {
+    const deletedIds = getDeletedIds()
+
+    // Push deletions to cloud for any tombstoned profiles still in Supabase
+    for (const cp of cloudProfiles) {
+      if (deletedIds.has(cp.id)) {
+        await deleteProfileFromCloud(cp.id)
+      }
+    }
+
+    // Filter out any deleted profiles from cloud results
+    const filteredCloud = cloudProfiles.filter(cp => !deletedIds.has(cp.id))
     const merged = [...localProfiles]
 
-    for (const cp of cloudProfiles) {
+    for (const cp of filteredCloud) {
       const idx = merged.findIndex(lp => lp.id === cp.id)
 
       // Extra stats bundled in the cloud profile row
@@ -433,8 +476,8 @@ export async function fullSync(userId: string): Promise<SyncResult> {
     }))
     localStorage.setItem('nobi_profiles', JSON.stringify(cleanMerged))
 
-    // ── 3. Pull sessions for ALL profiles (not just new ones) ─────────────────
-    for (const cp of cloudProfiles) {
+    // ── 3. Pull sessions for ALL non-deleted profiles ─────────────────────────
+    for (const cp of filteredCloud) {
       const added = await pullSessions(cp.id)
       sessionsNewLocal += added
     }
