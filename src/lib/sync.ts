@@ -407,46 +407,51 @@ export async function fullSync(userId: string): Promise<SyncResult> {
   // Step 0: Migrate any old-style `local_XXXXXX` IDs to proper UUIDs
   migrateProfileIds()
 
-  const localProfiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+  let localProfiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
   let sessionsNewLocal = 0
+  const deletedIds = getDeletedIds()
+  const syncedIds  = getSyncedIds()
 
-  // ── 1. Push everything local → cloud ────────────────────────────────────────
+  // ── 1. Pull cloud profiles FIRST to detect remote deletions ─────────────────
+  //    (must happen before push so we don't re-upload profiles deleted elsewhere)
+  const cloudProfiles = await pullProfiles(userId)
+  const filteredCloud = cloudProfiles.filter(cp => !deletedIds.has(cp.id))
+  const cloudIds      = new Set(filteredCloud.map(cp => cp.id))
+
+  // Remove locally any profiles that were deleted on another device
+  const profilesAfterRemoteDeletion = localProfiles.filter(lp => {
+    // "was synced before + not in cloud now + not deleted here" = deleted elsewhere
+    const deletedElsewhere = syncedIds.has(lp.id) && !cloudIds.has(lp.id) && !deletedIds.has(lp.id)
+    if (deletedElsewhere) {
+      console.log('[Sync] Removing profile deleted on another device:', lp.id)
+      removeAllLocalKeysForProfile(lp.id)
+      markProfileDeleted(lp.id)
+    }
+    return !deletedElsewhere
+  })
+
+  if (profilesAfterRemoteDeletion.length !== localProfiles.length) {
+    localStorage.setItem('nobi_profiles', JSON.stringify(profilesAfterRemoteDeletion))
+    localProfiles = profilesAfterRemoteDeletion
+  }
+
+  // ── 2. Push remaining local profiles → cloud ────────────────────────────────
   await pushAllProfiles(userId)
   for (const p of localProfiles) {
     await pushAllSessions(p.id, userId)
-    addSyncedId(p.id)  // mark as "known to cloud"
+    addSyncedId(p.id)
   }
 
-  // ── 2. Pull profiles from cloud ─────────────────────────────────────────────
-  const cloudProfiles = await pullProfiles(userId)
+  // ── 3. Push deletions for tombstoned profiles still in Supabase ──────────────
+  for (const cp of cloudProfiles) {
+    if (deletedIds.has(cp.id)) {
+      await deleteProfileFromCloud(cp.id)
+    }
+  }
 
   if (cloudProfiles.length > 0) {
-    const deletedIds = getDeletedIds()
-
-    // Push deletions to cloud for any tombstoned profiles still in Supabase
-    for (const cp of cloudProfiles) {
-      if (deletedIds.has(cp.id)) {
-        await deleteProfileFromCloud(cp.id)
-      }
-    }
-
-    // Filter out any deleted profiles from cloud results
-    const filteredCloud = cloudProfiles.filter(cp => !deletedIds.has(cp.id))
-    const cloudIds = new Set(filteredCloud.map(cp => cp.id))
-    const syncedIds = getSyncedIds()
-
-    // Start with local profiles, but drop any that were deleted on another device:
-    //   condition: in local + was previously synced to cloud + no longer in cloud + not tombstoned here
-    const merged = localProfiles.filter(lp => {
-      const removedRemotely = syncedIds.has(lp.id) && !cloudIds.has(lp.id) && !deletedIds.has(lp.id)
-      if (removedRemotely) {
-        console.log('[Sync] Profile deleted on another device, removing locally:', lp.id)
-        removeAllLocalKeysForProfile(lp.id)
-        markProfileDeleted(lp.id)  // tombstone so we don't re-push it
-        return false
-      }
-      return true
-    })
+    // ── 4. Merge cloud profiles into local ────────────────────────────────────
+    const merged = [...localProfiles]
 
     for (const cp of filteredCloud) {
       const idx = merged.findIndex(lp => lp.id === cp.id)

@@ -1,7 +1,7 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.10.1'
-export const APP_VERSION_NAME = 'fix: deleted profile on mobile still showed on desktop after sync'
+export const APP_VERSION = '1.10.2'
+export const APP_VERSION_NAME = 'fix: deleted profile on desktop still showed on mobile — pull before push to detect remote deletions'
 export const BUILD_DATE = '2026-06-05'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  { version: '1.10.2', name: 'fix: deleted profile on desktop still showed on mobile — pull before push to detect remote deletions', date: '2026-06-05' },
   { version: '1.10.1', name: 'fix: deleted profile on mobile still showed on desktop after sync', date: '2026-06-05' },
   { version: '1.10.0', name: 'feat: delete on desktop — mouse drag + hover button', date: '2026-06-05' },
   { version: '1.9.1', name: 'fix: deleted profile returned after sync — add tombstone + cloud delete', date: '2026-06-05' },
