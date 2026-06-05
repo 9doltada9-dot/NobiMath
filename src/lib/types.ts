@@ -65,9 +65,16 @@ export interface SkillStat {
   totalTimeSeconds: number
   recentWrong: number     // recency-weighted wrong counter (decays on correct)
   lastSeen: string        // ISO timestamp of last attempt
+  // Spaced repetition (optional — added once SR runs)
+  srInterval?: number        // days until next review
+  srEaseFactor?: number      // SM-2 ease factor
+  srNextReview?: string      // ISO date
 }
 
 export type SkillStats = Record<string, SkillStat>
+
+// ─── Error classification ─────────────────────────────────────────────────────
+export type ErrorType = 'careless' | 'conceptual' | 'off-by-one' | 'reversal' | null
 
 // ─── Answer Record ────────────────────────────────────────────────────────────
 export interface AnswerRecord {
@@ -76,6 +83,7 @@ export interface AnswerRecord {
   isCorrect: boolean
   timeSeconds: number
   skipped?: boolean
+  errorType?: ErrorType   // classified error (only set when wrong)
 }
 
 // ─── Assessment ───────────────────────────────────────────────────────────────

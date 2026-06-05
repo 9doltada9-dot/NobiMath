@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import { getAvatar } from '@/lib/avatars'
 import { loadLifetime, loadTrophies, getTrophy, TROPHIES } from '@/lib/trophies'
 import { loadSkillStats, getWeakSkills, skillLabel, skillEmoji, accuracyOf } from '@/lib/adaptive'
+import { loadMastery, getMasteredSkills, getMasteryProgress, MASTERY_STREAK } from '@/lib/mastery'
 import { LEVEL_META, OP_META, ALL_OPS, opLevel } from '@/lib/types'
 import type { Profile, SessionRecord } from '@/lib/types'
 
@@ -110,6 +111,9 @@ function ProfileContent() {
   const streak = parseInt(localStorage.getItem(`nobi_streak_${profile.id}`) ?? '0', 10)
   const overallAcc = life.problems > 0 ? Math.round(life.correct / life.problems * 100) : 0
   const attentionData = analyzeTimePatterns(loadHistory(profile.id))
+  const masteryMap = loadMastery(profile.id)
+  const masteredSkills = getMasteredSkills(masteryMap)
+  const inProgressSkills = Object.entries(masteryMap).filter(([, r]) => !r.mastered && r.streak > 0)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 p-4">
@@ -249,6 +253,44 @@ function ProfileContent() {
                 )
               })}
             </div>
+          </motion.div>
+        )}
+
+        {/* Mastery Badges */}
+        {(masteredSkills.length > 0 || inProgressSkills.length > 0) && (
+          <motion.div className="bg-white rounded-3xl shadow-xl p-5 mb-4"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+            <h2 className="text-sm font-black text-gray-600 mb-3">🏅 ทักษะที่ Mastered ({masteredSkills.length})</h2>
+            {masteredSkills.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {masteredSkills.map(tag => (
+                  <div key={tag} className="flex items-center gap-1.5 bg-gradient-to-r from-amber-100 to-yellow-100 border border-amber-200 rounded-full px-3 py-1">
+                    <span className="text-sm">{skillEmoji(tag)}</span>
+                    <span className="text-[11px] font-black text-amber-700">{skillLabel(tag)}</span>
+                    <span className="text-xs">✅</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {inProgressSkills.length > 0 && (
+              <div>
+                <p className="text-[10px] text-gray-400 font-bold mb-2">กำลังเดินหน้าสู่ Mastery</p>
+                <div className="space-y-1.5">
+                  {inProgressSkills.slice(0, 4).map(([tag, r]) => (
+                    <div key={tag} className="flex items-center gap-2">
+                      <span className="text-sm w-5 text-center">{skillEmoji(tag)}</span>
+                      <span className="text-xs font-bold text-gray-600 w-24 truncate">{skillLabel(tag)}</span>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: MASTERY_STREAK }, (_, i) => (
+                          <div key={i} className={`w-3 h-3 rounded-full ${i < r.streak ? 'bg-amber-400' : 'bg-gray-200'}`} />
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-gray-400">{r.streak}/{MASTERY_STREAK}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 

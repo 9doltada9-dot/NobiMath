@@ -9,6 +9,8 @@
 
 import type { Op, Problem, AnswerRecord, SkillTag, SkillStat, SkillStats } from './types'
 import { generateProblem, tagProblem, generateForTag } from './problems'
+import { updateSR, isDue, daysOverdue, defaultSR } from './spaced-repetition'
+import type { SRData } from './spaced-repetition'
 
 export { skillLabel, skillEmoji } from './problems'
 
@@ -49,6 +51,11 @@ export function recordAnswers(stats: SkillStats, answers: AnswerRecord[]): Skill
     const tags = p.tags ?? tagProblem(p.op ?? 'add', p.a, p.b)
     for (const tag of tags) {
       const prev = next[tag] ?? emptyStat(tag)
+      // Spaced repetition update
+      const srPrev: SRData | undefined = prev.srInterval
+        ? { interval: prev.srInterval, easeFactor: prev.srEaseFactor ?? 2.5, nextReviewDate: prev.srNextReview ?? '', totalReviews: prev.attempts }
+        : undefined
+      const sr = updateSR(srPrev, ans.isCorrect, ans.timeSeconds || 0)
       next[tag] = {
         tag,
         attempts: prev.attempts + 1,
@@ -56,10 +63,22 @@ export function recordAnswers(stats: SkillStats, answers: AnswerRecord[]): Skill
         totalTimeSeconds: prev.totalTimeSeconds + (ans.timeSeconds || 0),
         recentWrong: ans.isCorrect ? Math.max(0, prev.recentWrong - 1) : prev.recentWrong + 1,
         lastSeen: new Date().toISOString(),
+        srInterval: sr.interval,
+        srEaseFactor: sr.easeFactor,
+        srNextReview: sr.nextReviewDate,
       }
     }
   }
   return next
+}
+
+/** Skills that are due for spaced-rep review today. */
+export function getDueSkills(stats: SkillStats, op?: Op): SkillStat[] {
+  return Object.values(stats)
+    .filter(s => (op ? s.tag.startsWith(`${op}-`) : true))
+    .filter(s => s.attempts >= 3 && isDue({ interval: s.srInterval ?? 1, easeFactor: s.srEaseFactor ?? 2.5, nextReviewDate: s.srNextReview ?? '', totalReviews: s.attempts }))
+    .sort((a, b) => daysOverdue({ interval: b.srInterval ?? 1, easeFactor: 2.5, nextReviewDate: b.srNextReview ?? '', totalReviews: 0 })
+                  - daysOverdue({ interval: a.srInterval ?? 1, easeFactor: 2.5, nextReviewDate: a.srNextReview ?? '', totalReviews: 0 }))
 }
 
 /** Weak skills, strongest-weakness first. Optionally restricted to one operation. */

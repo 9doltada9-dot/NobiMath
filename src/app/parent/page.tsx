@@ -5,9 +5,45 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { getAvatar } from '@/lib/avatars'
 import { loadLifetime, loadTrophies, TROPHIES } from '@/lib/trophies'
-import { loadSkillStats, getWeakSkills, skillLabel, skillEmoji, accuracyOf } from '@/lib/adaptive'
+import { loadSkillStats, getWeakSkills, skillLabel } from '@/lib/adaptive'
 import { LEVEL_META, OP_META, ALL_OPS, opLevel } from '@/lib/types'
-import type { Profile } from '@/lib/types'
+import type { Profile, SessionRecord } from '@/lib/types'
+
+// ─── Weekly Report Generator ──────────────────────────────────────────────────
+function generateWeeklyReport(profiles: Profile[]): string {
+  const today = new Date()
+  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7)
+
+  const lines: string[] = [
+    `📋 รายงานรายสัปดาห์ — ${today.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    '',
+  ]
+
+  for (const p of profiles) {
+    let history: SessionRecord[] = []
+    try { history = JSON.parse(localStorage.getItem(`nobi_history_${p.id}`) ?? '[]') } catch { history = [] }
+
+    const thisWeek = history.filter(s => new Date(s.date) >= weekAgo)
+    const activeDays = new Set(thisWeek.map(s => new Date(s.date).toDateString())).size
+    const avgAcc = thisWeek.length > 0
+      ? Math.round(thisWeek.reduce((sum, s) => sum + s.accuracy, 0) / thisWeek.length)
+      : 0
+    const totalProblems = thisWeek.reduce((sum, s) => sum + s.total, 0)
+    const skillStats = loadSkillStats(p.id)
+    const weakTop = getWeakSkills(skillStats).slice(0, 2).map(s => skillLabel(s.tag))
+
+    lines.push(`👤 ${p.nickname} (อายุ ${p.age} ปี)`)
+    lines.push(`  • ฝึก ${activeDays} วัน / ${thisWeek.length} เซสชั่น / ${totalProblems} ข้อ`)
+    if (thisWeek.length > 0) lines.push(`  • ความแม่นยำเฉลี่ย ${avgAcc}%`)
+    if (weakTop.length > 0) lines.push(`  • ควรฝึกเพิ่ม: ${weakTop.join(', ')}`)
+    if (activeDays === 0) lines.push(`  ⚠️ ไม่ได้ฝึกเลยในสัปดาห์นี้ — ลองตั้งเวลาฝึกประจำวัน`)
+    else if (activeDays >= 5) lines.push(`  ⭐ เยี่ยม! ฝึกต่อเนื่องดีมาก`)
+    lines.push('')
+  }
+
+  lines.push('— สร้างโดย Nobi Skill AI')
+  return lines.join('\n')
+}
 
 function getGameLevel(exp: number) { return Math.floor(exp / 100) + 1 }
 
@@ -37,9 +73,12 @@ export default function ParentDashboardPage() {
   const router = useRouter()
   const [summaries, setSummaries] = useState<ProfileSummary[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [weeklyReport, setWeeklyReport] = useState<string | null>(null)
+  const [profilesData, setProfilesData] = useState<Profile[]>([])
 
   useEffect(() => {
     const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+    setProfilesData(profiles)
     const data: ProfileSummary[] = profiles.map(p => {
       const life = loadLifetime(p.id)
       const trophies = loadTrophies(p.id)
@@ -75,7 +114,12 @@ export default function ParentDashboardPage() {
             ← กลับ
           </button>
           <h1 className="text-white font-black text-xl">👨‍👩‍👧 รายงานผู้ปกครอง</h1>
-          <div className="w-16" />
+          <button
+            onClick={() => setWeeklyReport(generateWeeklyReport(profilesData))}
+            className="bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-white/30 transition-colors"
+          >
+            📋 สรุปสัปดาห์
+          </button>
         </div>
 
         {summaries.length === 0 ? (
@@ -240,6 +284,41 @@ export default function ParentDashboardPage() {
         )}
 
       </div>
+
+      {/* Weekly Report Modal */}
+      {weeklyReport && (
+        <motion.div
+          className="fixed inset-0 bg-black/60 flex items-end justify-center z-50 p-4"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          onClick={() => setWeeklyReport(null)}
+        >
+          <motion.div
+            className="bg-white rounded-3xl w-full max-w-lg overflow-hidden"
+            initial={{ y: 100 }} animate={{ y: 0 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-black text-base">📋 รายงานรายสัปดาห์</h2>
+                <p className="text-white/70 text-xs">7 วันที่ผ่านมา</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(weeklyReport) }}
+                  className="bg-white/20 text-white text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-white/30"
+                >
+                  📋 คัดลอก
+                </button>
+                <button onClick={() => setWeeklyReport(null)} className="text-white/70 hover:text-white text-xl font-black">✕</button>
+              </div>
+            </div>
+            <pre className="p-5 text-xs text-gray-700 font-mono whitespace-pre-wrap overflow-y-auto max-h-[55vh] leading-relaxed">
+              {weeklyReport}
+            </pre>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   )
 }

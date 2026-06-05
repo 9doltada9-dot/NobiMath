@@ -356,3 +356,47 @@ export function skillLabel(tag: SkillTag): string {
   }
   return name
 }
+
+// ─── Contextual Problem Stories ────────────────────────────────────────────────
+// Maps a problem to a short Thai story sentence for kids.
+// Returns null if no suitable context.
+type StoryFn = (a: number, b: number) => string
+
+const ADD_STORIES: StoryFn[] = [
+  (a, b) => `มีแอปเปิ้ล ${a} ผล แล้วได้รับเพิ่มอีก ${b} ผล มีแอปเปิ้ลทั้งหมดกี่ผล?`,
+  (a, b) => `นกนั่งอยู่บนต้นไม้ ${a} ตัว บินมาเพิ่มอีก ${b} ตัว มีนกทั้งหมดกี่ตัว?`,
+  (a, b) => `มีดาวสีเหลือง ${a} ดวง กับดาวสีแดง ${b} ดวง มีดาวทั้งหมดกี่ดวง?`,
+  (a, b) => `หนังสือชั้นบน ${a} เล่ม ชั้นล่าง ${b} เล่ม มีหนังสือรวมกี่เล่ม?`,
+]
+
+const SUB_STORIES: StoryFn[] = [
+  (a, b) => `มีขนม ${a} ชิ้น กินไป ${b} ชิ้น เหลือขนมกี่ชิ้น?`,
+  (a, b) => `มีลูกโป่ง ${a} ลูก แตกไป ${b} ลูก เหลือกี่ลูก?`,
+  (a, b) => `มีเด็ก ${a} คน กลับบ้านไป ${b} คน เหลือกี่คน?`,
+]
+
+const MUL_STORIES: StoryFn[] = [
+  (a, b) => `มีถุง ${a} ถุง แต่ละถุงมีขนม ${b} ชิ้น มีขนมทั้งหมดกี่ชิ้น?`,
+  (a, b) => `นั่งโต๊ะ ${a} โต๊ะ แต่ละโต๊ะมีเก้าอี้ ${b} ตัว มีเก้าอี้ทั้งหมดกี่ตัว?`,
+]
+
+const DIV_STORIES: StoryFn[] = [
+  (a, b) => `มีขนม ${a} ชิ้น แบ่งให้เด็ก ${b} คน เท่าๆ กัน แต่ละคนได้กี่ชิ้น?`,
+  (a, b) => `ดินสอ ${a} แท่ง ใส่กล่องๆ ละ ${b} แท่ง ต้องใช้กล่องกี่กล่อง?`,
+]
+
+export function getStoryContext(op: Op, a: number, b: number, rng: () => number = Math.random): string | null {
+  // Only for basic ops and reasonable numbers
+  if (!['add', 'sub', 'mul', 'div'].includes(op)) return null
+  if (Math.max(a, b) > 99) return null
+
+  const bank: StoryFn[] =
+    op === 'add' ? ADD_STORIES :
+    op === 'sub' ? SUB_STORIES :
+    op === 'mul' ? MUL_STORIES :
+    DIV_STORIES
+
+  // Pick deterministically from rng seed
+  const idx = Math.floor(rng() * bank.length)
+  return bank[idx](a, b)
+}

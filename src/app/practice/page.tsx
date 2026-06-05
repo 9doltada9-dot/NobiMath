@@ -36,11 +36,35 @@ import { computeMissionPlan, generateMissionProblems } from '@/lib/mission'
 import type { MissionPlan } from '@/lib/mission'
 import { getCurrentTier, getNextTier, getTierProgress, getAgeStyle } from '@/lib/tiers'
 import type { ExpTier, AgeStyle } from '@/lib/tiers'
+import { computeAttention, attentionLevelDelta } from '@/lib/attention'
+import type { AttentionState } from '@/lib/attention'
+import { updateMastery, loadMastery, saveMastery, MASTERY_STREAK, MASTERY_TIME } from '@/lib/mastery'
+import { getStoryContext } from '@/lib/problems'
+import type { ErrorType } from '@/lib/types'
 
 const TOTAL_QUESTIONS = 10
 const EXP_PER_CORRECT = 10
+const WARMUP_COUNT    = 3   // warm-up questions at easier level
 
-type Screen = 'dashboard' | 'practice' | 'result' | 'trophies'
+type Screen = 'dashboard' | 'practice' | 'result' | 'trophies' | 'speed'
+
+// ─── Error Classifier ──────────────────────────────────────────────────────────
+function classifyError(correct: number, userAnswer: number | null, timeSeconds: number): ErrorType {
+  if (userAnswer === null) return null
+  if (Math.abs(userAnswer - correct) === 1) return 'off-by-one'
+  const rev = parseInt(String(Math.abs(correct)).split('').reverse().join(''), 10)
+  if (userAnswer === rev && rev !== correct) return 'reversal'
+  if (timeSeconds < 2.5) return 'careless'
+  return 'conceptual'
+}
+
+function errorTip(type: ErrorType): string | null {
+  if (type === 'off-by-one')  return '⚠️ เกือบได้แล้ว! ตรวจสอบคำตอบอีกครั้ง'
+  if (type === 'reversal')    return '🔄 ระวังลำดับหลักของตัวเลข!'
+  if (type === 'careless')    return '⏱️ ใจเย็นๆ อย่ารีบเกินไปนะ'
+  if (type === 'conceptual')  return '💡 ลองดูวิธีคิดในหน้าต่อไป'
+  return null
+}
 
 function getGameLevel(totalExp: number): number {
   return Math.floor(totalExp / 100) + 1
@@ -183,75 +207,157 @@ function calculateFatigue(
 }
 
 // ─── Calculation Hint ─────────────────────────────────────────────────────────
-/** Column-math visual for addition (with carry) and subtraction (with borrow). */
+/** Animated column-math visual: shows carry (add) or borrow (sub) step by step. */
 function ColumnMath({ a, b, op }: { a: number; b: number; op: 'add' | 'sub' }) {
+  const [phase, setPhase] = useState(0)
+
+  useEffect(() => {
+    setPhase(0)
+    const t1 = setTimeout(() => setPhase(1), 700)   // reveal borrow/carry annotations
+    const t2 = setTimeout(() => setPhase(2), 2300)  // reveal result digits
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [a, b, op])
+
   const ans = op === 'add' ? a + b : a - b
   const n = Math.max(String(a).length, String(b).length, String(Math.abs(ans)).length)
-  const pad = (x: number) => String(Math.abs(x)).padStart(n, ' ')
-  const aS = pad(a).split('')
-  const bS = pad(b).split('')
-  const rS = pad(ans).split('')
+  const padD = (x: number) => String(Math.abs(x)).padStart(n, '0').split('').map(Number)
+  const aD = padD(a)
+  const bD = padD(b)
+  const rD = padD(Math.abs(ans))
 
-  // Carries (add) or borrows (sub)
-  const carries: (string | null)[] = Array(n).fill(null)
-  const borrowedFrom: boolean[] = Array(n).fill(false) // tens+ col that was decremented
-  const needBorrow: boolean[] = Array(n).fill(false)    // units col that needed borrow
+  // ── Compute borrow / carry per column (right → left) ──────────────────
+  // giveBorrow[i]: column i was decremented — it gave a borrow to column i+1
+  // recvBorrow[i]: column i needed borrow — its digit (after adj) was too small
+  // carryInto[i]:  column i receives a carry from column i+1
+  const giveBorrow: boolean[] = Array(n).fill(false)
+  const recvBorrow: boolean[] = Array(n).fill(false)
+  const carryInto:  boolean[] = Array(n).fill(false)
 
-  if (op === 'add') {
-    let carry = 0
-    for (let i = n - 1; i >= 0; i--) {
-      const ad = parseInt(aS[i]) || 0
-      const bd = parseInt(bS[i]) || 0
-      const sum = ad + bd + carry
-      carry = sum >= 10 ? 1 : 0
-      if (carry && i - 1 >= 0) carries[i - 1] = '1'
-    }
-  } else {
+  if (op === 'sub') {
     let borrow = 0
     for (let i = n - 1; i >= 0; i--) {
-      const ad = (parseInt(aS[i]) || 0) - borrow
-      const bd = parseInt(bS[i]) || 0
-      if (ad < bd) { needBorrow[i] = true; borrow = 1; if (i - 1 >= 0) borrowedFrom[i - 1] = true }
-      else borrow = 0
+      const adj = aD[i] - borrow
+      if (adj < bD[i]) {
+        recvBorrow[i] = true          // this col needs the borrow
+        if (i > 0) giveBorrow[i - 1] = true  // left col is decremented
+        borrow = 1
+      } else {
+        borrow = 0
+      }
+    }
+  } else {
+    let carry = 0
+    for (let i = n - 1; i >= 0; i--) {
+      const sum = aD[i] + bD[i] + carry
+      carry = sum >= 10 ? 1 : 0
+      if (carry && i > 0) carryInto[i - 1] = true
     }
   }
 
-  const cell = 'w-7 text-center inline-block text-xl font-black'
+  // Value to show above col i when it gave borrow:
+  // = (original digit) - 1 (gave to right) + 10 if it also received from its left
+  const annotatedGive = (i: number) => aD[i] - 1 + (recvBorrow[i] ? 10 : 0)
+
+  const W = 'w-9'
+  const DIG = 'text-2xl font-black'
+
   return (
     <div className="font-mono select-none">
-      {/* carry row */}
-      {op === 'add' && carries.some(c => c) && (
-        <div className="flex justify-end mb-0.5">
-          {carries.map((c, i) => (
-            <span key={i} className={`${cell} text-xs text-rose-500`}>{c ?? ''}</span>
-          ))}
-        </div>
-      )}
-      {/* a row */}
-      <div className="flex justify-end">
-        {aS.map((d, i) => (
-          <span key={i} className={`${cell} ${borrowedFrom[i] ? 'text-orange-400' : 'text-gray-800'}`}>
-            {borrowedFrom[i] ? (parseInt(d) - 1).toString() : d}
-          </span>
+
+      {/* ── Row 1: Annotations ── */}
+      <div className="flex ml-7 mb-0.5" style={{ minHeight: 18 }}>
+        {Array.from({ length: n }, (_, i) => (
+          <div key={i} className={`${W} flex justify-center`}>
+            {op === 'sub' ? (
+              <>
+                {/* Decremented digit above the col that gave borrow */}
+                {giveBorrow[i] && (
+                  <motion.span
+                    className="text-[11px] font-black text-orange-500"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={phase >= 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: -5 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    {annotatedGive(i)}
+                  </motion.span>
+                )}
+                {/* ¹ above the col that receives borrow (gains +10) */}
+                {recvBorrow[i] && !giveBorrow[i] && (
+                  <motion.span
+                    className="text-[11px] font-black text-orange-500"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={phase >= 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: -5 }}
+                    transition={{ duration: 0.3, delay: 0.18 }}
+                  >
+                    ¹
+                  </motion.span>
+                )}
+              </>
+            ) : (
+              /* Carry 1 above the col that receives carry */
+              carryInto[i] && (
+                <motion.span
+                  className="text-[11px] font-black text-rose-500"
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={phase >= 1 ? { opacity: 1, y: 0 } : { opacity: 0, y: -5 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  1
+                </motion.span>
+              )
+            )}
+          </div>
         ))}
       </div>
-      {/* operator + b row */}
+
+      {/* ── Row 2: A digits — crossed out if gave borrow ── */}
+      <div className="flex ml-7">
+        {aD.map((d, i) => (
+          <div key={i} className={`${W} flex justify-center`}>
+            <span className={`${DIG} transition-all duration-300 ${
+              op === 'sub' && giveBorrow[i] && phase >= 1
+                ? 'text-gray-300 line-through decoration-2'
+                : 'text-gray-800'
+            }`}>
+              {d}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Row 3: Operator + B digits ── */}
       <div className="flex items-center">
-        <span className="w-5 text-right text-lg font-black text-violet-500 mr-0.5">
+        <span className="w-7 text-right text-xl font-black text-violet-500">
           {op === 'add' ? '+' : '−'}
         </span>
-        <div className="flex">
-          {bS.map((d, i) => (
-            <span key={i} className={`${cell} ${needBorrow[i] ? 'text-red-500 font-black' : 'text-gray-800'}`}>{d}</span>
-          ))}
-        </div>
+        {bD.map((d, i) => (
+          <div key={i} className={`${W} flex justify-center`}>
+            <span className={`${DIG} ${
+              op === 'sub' && recvBorrow[i] ? 'text-red-400' : 'text-gray-800'
+            }`}>{d}</span>
+          </div>
+        ))}
       </div>
-      {/* divider */}
-      <div className="border-t-2 border-gray-400 my-1 mx-5" />
-      {/* result */}
-      <div className="flex justify-end">
-        {rS.map((d, i) => <span key={i} className={`${cell} text-violet-600`}>{d}</span>)}
+
+      {/* ── Divider ── */}
+      <div className="border-t-2 border-gray-400 my-1.5 ml-7" />
+
+      {/* ── Row 4: Result (animated in) ── */}
+      <div className="flex ml-7">
+        {rD.map((d, i) => (
+          <div key={i} className={`${W} flex justify-center`}>
+            <motion.span
+              className={`${DIG} text-violet-600`}
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={phase >= 2 ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', delay: (n - 1 - i) * 0.1 }}
+            >
+              {d}
+            </motion.span>
+          </div>
+        ))}
       </div>
+
     </div>
   )
 }
@@ -259,40 +365,45 @@ function ColumnMath({ a, b, op }: { a: number; b: number; op: 'add' | 'sub' }) {
 function calcHintExplanation(a: number, b: number, op: 'add' | 'sub'): string[] {
   const steps: string[] = []
   const n = Math.max(String(a).length, String(b).length)
-  const colNames = ['หลักหน่วย', 'หลักสิบ', 'หลักร้อย', 'หลักพัน']
+  const colName = (pos: number) =>
+    (['หลักหน่วย', 'หลักสิบ', 'หลักร้อย', 'หลักพัน'] as const)[pos] ?? `หลักที่ ${pos + 1}`
 
   if (op === 'add') {
     let carry = 0
+    // Right to left → steps in units-first order
     for (let i = n - 1; i >= 0; i--) {
-      const ad = Math.floor(a / Math.pow(10, n - 1 - i)) % 10
-      const bd = Math.floor(b / Math.pow(10, n - 1 - i)) % 10
+      const pos = n - 1 - i
+      const ad = Math.floor(a / Math.pow(10, pos)) % 10
+      const bd = Math.floor(b / Math.pow(10, pos)) % 10
       const sum = ad + bd + carry
-      const col = colNames[n - 1 - i] ?? `หลักที่ ${n - i}`
       if (sum >= 10) {
-        steps.push(`${col}: ${ad}+${bd}${carry > 0 ? `+${carry}(ทด)` : ''}=${sum} → เขียน ${sum % 10} ทด 1`)
+        steps.push(`${colName(pos)}: ${ad}+${bd}${carry ? '+1(ทด)' : ''}=${sum} → เขียน ${sum % 10} ทด 1`)
         carry = 1
       } else {
-        steps.push(`${col}: ${ad}+${bd}${carry > 0 ? `+${carry}(ทด)` : ''}=${sum}`)
+        steps.push(`${colName(pos)}: ${ad}+${bd}${carry ? '+1(ทด)' : ''}=${sum}`)
         carry = 0
       }
     }
   } else {
     let borrow = 0
     for (let i = n - 1; i >= 0; i--) {
-      const col = colNames[n - 1 - i] ?? `หลักที่ ${n - i}`
-      let ad = Math.floor(a / Math.pow(10, n - 1 - i)) % 10
-      const bd = Math.floor(b / Math.pow(10, n - 1 - i)) % 10
-      ad -= borrow
+      const pos = n - 1 - i
+      const origAD = Math.floor(a / Math.pow(10, pos)) % 10
+      const bd = Math.floor(b / Math.pow(10, pos)) % 10
+      const ad = origAD - borrow
       if (ad < bd) {
-        steps.push(`${col}: ${ad}<${bd} → ยืม 1 จาก${colNames[n - i] ?? 'หลักถัดไป'}: ${ad + 10}−${bd}=${ad + 10 - bd}`)
+        steps.push(`${colName(pos)}: ${origAD}${borrow ? '-1(ยืม)' : ''} < ${bd} → ยืม 1 จาก${colName(pos + 1)}: ${ad + 10}−${bd}=${ad + 10 - bd}`)
         borrow = 1
+      } else if (borrow > 0) {
+        steps.push(`${colName(pos)}: ${origAD} ยืมไป 1 เหลือ ${ad} → ${ad}−${bd}=${ad - bd}`)
+        borrow = 0
       } else {
-        steps.push(`${col}: ${ad}−${bd}=${ad - bd}${borrow > 0 ? ' (หลังยืม)' : ''}`)
+        steps.push(`${colName(pos)}: ${origAD}−${bd}=${ad - bd}`)
         borrow = 0
       }
     }
   }
-  return steps.reverse()
+  return steps  // already units-first order
 }
 
 interface CalcHintState { problem: Problem; next: Problem; newAnswers: AnswerRecord[]; newIndex: number }
@@ -344,6 +455,13 @@ function CalcHintModal({ state, onContinue }: { state: CalcHintState; onContinue
                               : '📌 จำไว้: ถ้าตัวตั้งน้อยกว่าตัวลบ ให้ยืม 1 จากหลักถัดไป'}
               </p>
             </>
+          ) : (op === 'add' || op === 'sub') && Math.max(problem.a, problem.b) <= 20 ? (
+            /* Number bond for young children */
+            <div className="text-center py-2">
+              <p className="text-xs text-gray-400 font-bold mb-1">Number Bond</p>
+              <NumberBond a={problem.a} b={problem.b} op={op as 'add' | 'sub'} />
+              <p className="text-2xl font-black text-violet-600 mt-2">= {problem.answer}</p>
+            </div>
           ) : (
             <div className="text-center py-4">
               <p className="text-3xl mb-2">{problem.a} {op === 'add' ? '+' : op === 'sub' ? '−' : op === 'mul' ? '×' : '÷'} {problem.b}</p>
@@ -360,6 +478,136 @@ function CalcHintModal({ state, onContinue }: { state: CalcHintState; onContinue
         </div>
       </motion.div>
     </motion.div>
+  )
+}
+
+// ─── Number Bond Visual (for young children ≤ 7, small numbers) ─────────────
+function NumberBond({ a, b, op }: { a: number; b: number; op: 'add' | 'sub' }) {
+  const total = op === 'add' ? a + b : a
+  const left  = op === 'add' ? a : b
+  const right = op === 'add' ? b : a - b
+  return (
+    <div className="flex flex-col items-center gap-1 my-2">
+      <div className="w-14 h-14 rounded-full bg-violet-100 border-2 border-violet-400 flex items-center justify-center text-2xl font-black text-violet-700">
+        {total}
+      </div>
+      <div className="flex gap-8 relative">
+        <div className="absolute left-1/2 -translate-x-1/2 top-0 w-px h-3 bg-gray-300" />
+        <div className="absolute left-1/2 top-3 w-16 h-px bg-gray-300 -translate-x-1/2" />
+        <div className="absolute left-1/4 top-3 w-px h-3 bg-gray-300" />
+        <div className="absolute right-1/4 top-3 w-px h-3 bg-gray-300" />
+        <div className="w-12 h-12 rounded-full bg-amber-100 border-2 border-amber-400 flex items-center justify-center text-xl font-black text-amber-700 mt-5">
+          {left}
+        </div>
+        <div className="w-12 h-12 rounded-full bg-emerald-100 border-2 border-emerald-400 flex items-center justify-center text-xl font-black text-emerald-700 mt-5">
+          {right}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Speed Challenge Screen (60-second blitz mode) ───────────────────────────
+function SpeedChallengeScreen({
+  profile,
+  op,
+  initialStats,
+  onFinish,
+  onExit,
+}: {
+  profile: Profile
+  op: Op
+  initialStats: SkillStats
+  onFinish: (score: number, total: number, expGained: number) => void
+  onExit: () => void
+}) {
+  const DURATION = 60
+  const [timeLeft, setTimeLeft] = useState(DURATION)
+  const [problem, setProblem] = useState<Problem>(() => generateAdaptiveProblem(op, opLevel(profile, op), initialStats))
+  const [inputValue, setInputValue] = useState('')
+  const [score, setScore] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [flash, setFlash] = useState<'correct' | 'wrong' | null>(null)
+  const statsRef = useRef(initialStats)
+
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      const expGained = score * 15
+      onFinish(score, total, expGained)
+      return
+    }
+    const t = setInterval(() => setTimeLeft(s => s - 1), 1000)
+    return () => clearInterval(t)
+  }, [timeLeft, score, total, onFinish])
+
+  function submit() {
+    if (!inputValue) return
+    const userNum = parseInt(inputValue, 10)
+    const correct = userNum === problem.answer
+    setFlash(correct ? 'correct' : 'wrong')
+    setScore(s => s + (correct ? 1 : 0))
+    setTotal(t => t + 1)
+    if (correct) {
+      statsRef.current = recordAnswers(statsRef.current, [{ problem, userAnswer: userNum, isCorrect: true, timeSeconds: 0 }])
+    }
+    setTimeout(() => {
+      setProblem(generateAdaptiveProblem(op, opLevel(profile, op), statsRef.current))
+      setInputValue('')
+      setFlash(null)
+    }, 200)
+  }
+
+  const pct = (timeLeft / DURATION) * 100
+  const barColor = timeLeft > 20 ? 'from-emerald-400 to-teal-500' : timeLeft > 10 ? 'from-amber-400 to-orange-400' : 'from-red-400 to-rose-500'
+
+  return (
+    <div className={`min-h-screen bg-gradient-to-br ${flash === 'correct' ? 'from-green-400 via-emerald-400 to-teal-500' : flash === 'wrong' ? 'from-red-400 via-rose-400 to-pink-500' : 'from-violet-600 via-purple-600 to-indigo-700'} flex flex-col items-center justify-between p-4 pb-6 transition-all duration-150`}>
+      <div className="w-full max-w-sm pt-3">
+        <div className="flex items-center justify-between mb-2">
+          <button onClick={onExit} className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white font-black">✕</button>
+          <div className="flex items-center gap-2">
+            <span className="text-white font-black text-2xl tabular-nums">{timeLeft}s</span>
+            <span className="text-xl">⚡</span>
+          </div>
+          <div className="bg-white/20 rounded-xl px-3 py-1 text-white font-black text-sm">{score} ถูก</div>
+        </div>
+        <div className="h-2 bg-white/20 rounded-full overflow-hidden mb-4">
+          <motion.div className={`h-full bg-gradient-to-r ${barColor} rounded-full`} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} />
+        </div>
+      </div>
+
+      <div className="w-full max-w-sm flex-1 flex items-center justify-center">
+        <motion.div key={total} className="w-full bg-white rounded-3xl shadow-2xl p-8 text-center"
+          initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.1 }}>
+          <p className="text-gray-400 text-xs font-bold mb-2 uppercase tracking-widest">{OP_META[op].name} ⚡ Speed</p>
+          <div className="text-6xl font-black text-gray-800 font-mono tabular-nums mb-1">
+            {problem.a} <span className="text-violet-500">{OP_META[op].symbol}</span> {problem.b}
+          </div>
+          <div className="text-3xl font-black text-gray-300 mt-2">= {inputValue || '?'}</div>
+        </motion.div>
+      </div>
+
+      <div className="w-full max-w-sm">
+        <div className="grid gap-2.5">
+          {[['7','8','9'],['4','5','6'],['1','2','3'],['⌫','0','✓']].map((row, ri) => (
+            <div key={ri} className="grid grid-cols-3 gap-2.5">
+              {row.map(key => (
+                <motion.button key={key} whileTap={{ scale: 0.92 }}
+                  onClick={() => {
+                    if (key === '⌫') { setInputValue(v => v.slice(0, -1)); return }
+                    if (key === '✓') { submit(); return }
+                    if (inputValue.length < 5) setInputValue(v => v + key)
+                  }}
+                  className={`h-14 rounded-2xl text-xl font-extrabold shadow-md ${
+                    key === '✓' ? 'bg-gradient-to-br from-violet-500 to-pink-500 text-white' :
+                    key === '⌫' ? 'bg-white/20 text-white' : 'bg-white text-gray-700'}`}
+                >{key}</motion.button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -542,6 +790,7 @@ function DashboardScreen({
   onSwitchUser,
   missionPlan,
   onStartMission,
+  onStartSpeed,
 }: {
   profile: Profile
   skillStats: SkillStats
@@ -553,6 +802,7 @@ function DashboardScreen({
   onSwitchUser: () => void
   missionPlan: MissionPlan | null
   onStartMission: () => void
+  onStartSpeed: () => void
 }) {
   const router = useRouter()
   const avatar = getAvatar(profile.avatar)
@@ -812,8 +1062,23 @@ function DashboardScreen({
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
               >
-                {'🚀'} {'เริ่มฝึก'}{OP_META[selectedOp].name}!
+                🚀 เริ่มฝึก{OP_META[selectedOp].name}!
               </motion.button>
+
+              {/* Speed Challenge button — unlock after streak ≥ 7 */}
+              {parseInt(localStorage.getItem(`nobi_streak_${profile.id}`) ?? '0', 10) >= 7 ? (
+                <motion.button
+                  onClick={onStartSpeed}
+                  className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white font-extrabold py-3 rounded-2xl shadow-md mb-3 flex items-center justify-center gap-2"
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                >
+                  ⚡ Speed Challenge (60s)
+                </motion.button>
+              ) : (
+                <div className="w-full bg-gray-100 text-gray-400 font-bold py-2.5 rounded-2xl mb-3 text-sm text-center">
+                  🔒 Speed Challenge — Streak 7 วันขึ้นไปเพื่อปลดล็อก
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -869,9 +1134,7 @@ function PracticeScreen({
   // Live skill stats updated within the session so later questions adapt too.
   const liveStatsRef = useRef<SkillStats>(initialStats)
   const isMission = !!problemQueue?.length
-  const [problem, setProblem] = useState<Problem>(() =>
-    problemQueue?.length ? problemQueue[0] : generateAdaptiveProblem(op, opLevel(profile, op), initialStats),
-  )
+
   const currentOpLevel = opLevel(profile, problem.op ?? op)
   const [questionIndex, setQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
@@ -881,7 +1144,16 @@ function PracticeScreen({
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [exitConfirm, setExitConfirm] = useState(false)
-  const localQueueRef = useRef<Problem[]>(problemQueue?.length ? [...problemQueue] : [])
+  const localQueueRef = useRef<Problem[]>(() => {
+    if (problemQueue?.length) return [...problemQueue]
+    // Warm-up: 3 easy problems (level-1) + TOTAL_QUESTIONS main problems
+    const warmupLvl = Math.max(1, opLevel(profile, op) - 1)
+    const warmup = Array.from({ length: WARMUP_COUNT }, () =>
+      generateAdaptiveProblem(op, warmupLvl, initialStats))
+    const main = Array.from({ length: TOTAL_QUESTIONS }, () =>
+      generateAdaptiveProblem(op, opLevel(profile, op), initialStats))
+    return [...warmup, ...main]
+  })()
   const aiAdjustedRef = useRef(false)
   const [aiAdjusted, setAiAdjusted] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
@@ -890,6 +1162,15 @@ function PracticeScreen({
   const [fatigueLevel, setFatigueLevel] = useState<FatigueLevel>('none')
   const [showBreakModal, setShowBreakModal] = useState(false)
   const [calcHint, setCalcHint] = useState<CalcHintState | null>(null)
+  // Attention state machine
+  const [attentionState, setAttentionState] = useState<AttentionState>('focused')
+  const [attentionNotice, setAttentionNotice] = useState<string | null>(null)
+  const lastAttentionRef = useRef<AttentionState>('focused')
+  // Mastery tracking
+  const masteryRef = useRef(loadMastery(profile.id))
+  const [newlyMastered, setNewlyMastered] = useState<string[]>([])
+  // Story context for current problem
+  const [storyCtx, setStoryCtx] = useState<string | null>(null)
 
   useEffect(() => {
     if (feedback) return
@@ -925,10 +1206,31 @@ function PracticeScreen({
       timeSeconds: Math.round(elapsed * 10) / 10,
     }
 
+    // Classify error type
+    const errType: ErrorType = isCorrect ? null : classifyError(problem.answer, userAnswerNum, Math.round(elapsed * 10) / 10)
+    const recordWithError: AnswerRecord = { ...record, errorType: errType }
+
+    // Show error tip briefly
+    if (!isCorrect && errorTip(errType)) {
+      setAiNotice(errorTip(errType)!)
+      setTimeout(() => setAiNotice(null), 3500)
+    }
+
     setFeedback(isCorrect ? 'correct' : 'wrong')
 
     // Update in-session skill stats so the next problem can adapt immediately.
-    liveStatsRef.current = recordAnswers(liveStatsRef.current, [record])
+    liveStatsRef.current = recordAnswers(liveStatsRef.current, [recordWithError])
+
+    // Update mastery tracking
+    const tags = problem.tags ?? []
+    let masteryMap = masteryRef.current
+    tags.forEach(tag => {
+      masteryMap = updateMastery(masteryMap, tag, isCorrect, Math.round(elapsed * 10) / 10)
+    })
+    const prevMastered = new Set(Object.entries(masteryRef.current).filter(([,v]) => v.mastered).map(([k]) => k))
+    const newM = tags.filter(t => masteryMap[t]?.mastered && !prevMastered.has(t))
+    if (newM.length > 0) setNewlyMastered(prev => [...prev, ...newM])
+    masteryRef.current = masteryMap
 
     setTimeout(() => {
       const newAnswers = [...answers, record]
@@ -946,6 +1248,30 @@ function PracticeScreen({
       ) {
         lastFatigueModalRef.current = newFatigue
         setShowBreakModal(true)
+      }
+
+      // ── Attention state machine ──
+      const { state: newAttn, reason: attnReason } = computeAttention(newAnswers, lastAttentionRef.current)
+      if (newAttn !== lastAttentionRef.current) {
+        lastAttentionRef.current = newAttn
+        setAttentionState(newAttn)
+        if (attnReason) { setAttentionNotice(attnReason); setTimeout(() => setAttentionNotice(null), 4000) }
+        // Auto-adjust difficulty based on attention
+        const delta = attentionLevelDelta(newAttn)
+        if (delta !== 0) {
+          const curOp = (problem.op ?? op) as Op
+          const curLvl = opLevel(profile, curOp)
+          const newLvl = Math.max(1, Math.min(10, curLvl + delta))
+          if (newLvl !== curLvl) {
+            // Rebuild remaining queue at new level
+            const remaining = localQueueRef.current.length - questionIndex - 1
+            if (remaining > 0) {
+              const adapted = Array.from({ length: remaining }, () =>
+                generateAdaptiveProblem(curOp, newLvl, liveStatsRef.current))
+              localQueueRef.current = [...localQueueRef.current.slice(0, questionIndex + 1), ...adapted]
+            }
+          }
+        }
       }
 
       const totalQ = localQueueRef.current.length > 0 ? localQueueRef.current.length : TOTAL_QUESTIONS
@@ -1009,6 +1335,16 @@ function PracticeScreen({
     startTimeRef.current = Date.now()
     setCalcHint(null)
   }
+
+  // Generate story context for current problem (low numbers only, for kids ≤10)
+  useEffect(() => {
+    if (profile.age <= 10 && (problem.op === 'add' || problem.op === 'sub' || problem.op === 'mul' || problem.op === 'div')) {
+      const ctx = getStoryContext(problem.op, problem.a, problem.b)
+      setStoryCtx(ctx)
+    } else {
+      setStoryCtx(null)
+    }
+  }, [problem, profile.age])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1103,18 +1439,41 @@ function PracticeScreen({
           <span>{'⚡'} +{correctSoFar * EXP_PER_CORRECT} EXP</span>
         </div>
 
-        {/* AI adaptation notice */}
+        {/* AI / Attention notices */}
         <AnimatePresence>
-          {aiNotice && (
+          {(aiNotice || attentionNotice) && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden mt-2"
             >
-              <div className="bg-white/20 border border-white/30 rounded-2xl px-3 py-2.5 text-white text-[11px] font-bold text-center leading-snug">
-                {aiNotice}
+              <div className={`border rounded-2xl px-3 py-2.5 text-[11px] font-bold text-center leading-snug ${
+                attentionState === 'bored' ? 'bg-amber-400/90 border-amber-300 text-amber-900' :
+                attentionState === 'confused' ? 'bg-sky-400/80 border-sky-300 text-white' :
+                'bg-white/20 border-white/30 text-white'
+              }`}>
+                {aiNotice ?? attentionNotice}
               </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Newly mastered skill popup */}
+        <AnimatePresence>
+          {newlyMastered.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="mt-2 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-2xl px-3 py-2 text-center shadow-md"
+              onAnimationComplete={() => {
+                setTimeout(() => setNewlyMastered([]), 3000)
+              }}
+            >
+              <p className="text-amber-900 font-black text-xs">
+                🏅 MASTERED! {newlyMastered.map(t => t.split('-').slice(1).join(' ')).join(', ')}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1165,21 +1524,35 @@ function PracticeScreen({
               )}
             </AnimatePresence>
 
+            {/* Warm-up indicator */}
+            {!isMission && questionIndex < WARMUP_COUNT && (
+              <div className="mb-1 flex justify-center">
+                <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-600 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                  🌡️ วอร์มอัพ {questionIndex + 1}/{WARMUP_COUNT}
+                </span>
+              </div>
+            )}
+
             {problem.focusTag ? (
-              <div className="mb-3 flex justify-center">
+              <div className="mb-2 flex justify-center">
                 <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full">
-                  {'🎯'} {'ทบทวนจุดอ่อน'}
+                  🎯 ทบทวนจุดอ่อน
                 </span>
               </div>
             ) : (
-              <div className="flex items-center justify-center gap-1.5 mb-3">
-                {isMission && (
-                  <span className="text-lg">{OP_META[problem.op ?? op].emoji}</span>
-                )}
+              <div className="flex items-center justify-center gap-1.5 mb-2">
+                {isMission && <span className="text-lg">{OP_META[problem.op ?? op].emoji}</span>}
                 <p className="text-gray-400 text-xs font-bold tracking-widest uppercase">
-                  {OP_META[problem.op ?? op].name}{'ให้ได้เลย'}!
+                  {OP_META[problem.op ?? op].name}ให้ได้เลย!
                 </p>
               </div>
+            )}
+
+            {/* Story context (for young kids) */}
+            {storyCtx && !feedback && (
+              <p className="text-[11px] text-gray-500 font-semibold text-center mb-2 leading-snug px-2">
+                📖 {storyCtx}
+              </p>
             )}
 
             {/* ── Fraction display ── */}
@@ -1975,6 +2348,25 @@ export default function PracticePage() {
     return <PracticeScreen profile={profile} op={selectedOp} initialStats={skillStats} onFinish={handlePracticeFinish} onExit={() => { setIsMission(false); setScreen('dashboard') }} problems={isMission ? missionProblems : undefined} />
   }
 
+  if (screen === 'speed') {
+    return (
+      <SpeedChallengeScreen
+        profile={profile}
+        op={selectedOp}
+        initialStats={skillStats}
+        onFinish={(score, total, expGainedSpeed) => {
+          // Award EXP for speed challenge
+          const updatedProfile = { ...profile, totalExp: profile.totalExp + expGainedSpeed }
+          localStorage.setItem('nobi_profile', JSON.stringify(updatedProfile))
+          const profiles: Profile[] = JSON.parse(localStorage.getItem('nobi_profiles') ?? '[]')
+          localStorage.setItem('nobi_profiles', JSON.stringify(profiles.map(p => p.id === profile.id ? updatedProfile : p)))
+          setScreen('dashboard')
+        }}
+        onExit={() => setScreen('dashboard')}
+      />
+    )
+  }
+
   if (screen === 'result') {
     return (
       <ResultScreen
@@ -2006,6 +2398,7 @@ export default function PracticePage() {
       onSelectOp={setSelectedOp}
       trophyCount={Object.keys(trophies).length}
       onStart={() => { setIsMission(false); setScreen('practice') }}
+      onStartSpeed={() => setScreen('speed')}
       onOpenTrophies={() => setScreen('trophies')}
       onSwitchUser={() => router.push('/')}
       missionPlan={missionPlan}
