@@ -17,14 +17,16 @@ import GuideModal from '@/components/GuideModal'
 
 function getGameLevel(totalExp: number) { return Math.floor(totalExp / 100) + 1 }
 
-// ─── Swipeable wrapper — swipe left to reveal delete ──────────────────────────
+// ─── Swipeable wrapper — touch swipe (mobile) + mouse drag (desktop) ──────────
 function SwipeCard({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }) {
   const [swipeX, setSwipeX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const startX = useRef(0)
   const DELETE_THRESHOLD = 80
 
+  // ── Touch (mobile / iPad) ────────────────────────────────────────────────────
   function onTouchStart(e: React.TouchEvent) {
     startX.current = e.touches[0].clientX
     setDragging(true)
@@ -36,19 +38,38 @@ function SwipeCard({ children, onDelete }: { children: React.ReactNode; onDelete
   }
   function onTouchEnd() {
     setDragging(false)
-    if (swipeX < -DELETE_THRESHOLD) {
-      setSwipeX(-DELETE_THRESHOLD)
-      setConfirming(true)
-    } else {
-      setSwipeX(0)
-      setConfirming(false)
-    }
+    if (swipeX < -DELETE_THRESHOLD) { setSwipeX(-DELETE_THRESHOLD); setConfirming(true) }
+    else { setSwipeX(0); setConfirming(false) }
   }
+
+  // ── Mouse (desktop) ──────────────────────────────────────────────────────────
+  function onMouseDown(e: React.MouseEvent) {
+    startX.current = e.clientX
+    setDragging(true)
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragging) return
+    const dx = e.clientX - startX.current
+    if (dx < 0) setSwipeX(Math.max(dx, -DELETE_THRESHOLD - 20))
+  }
+  function onMouseUp() {
+    setDragging(false)
+    if (swipeX < -DELETE_THRESHOLD) { setSwipeX(-DELETE_THRESHOLD); setConfirming(true) }
+    else { setSwipeX(0); setConfirming(false) }
+  }
+  function onMouseLeave() {
+    if (dragging) { setDragging(false); setSwipeX(0); setConfirming(false) }
+  }
+
   function cancel() { setSwipeX(0); setConfirming(false) }
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
-      {/* Delete button behind */}
+    <div
+      className="relative overflow-hidden rounded-2xl group"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); onMouseLeave() }}
+    >
+      {/* Delete panel behind (revealed by swipe or shown as hover button) */}
       <div className="absolute right-0 top-0 bottom-0 w-20 flex items-center justify-center bg-red-500 rounded-r-2xl">
         <button
           onClick={() => { setConfirming(false); onDelete() }}
@@ -58,7 +79,22 @@ function SwipeCard({ children, onDelete }: { children: React.ReactNode; onDelete
           <span className="text-[10px] font-black">ลบ</span>
         </button>
       </div>
-      {/* Card — slides left on swipe */}
+
+      {/* Desktop hover delete button — shown on hover, disappears when swiped */}
+      {swipeX === 0 && (
+        <button
+          onClick={onDelete}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center text-sm
+            transition-all duration-150 hover:bg-red-500 hover:text-white
+            ${hovered ? 'opacity-100 scale-100' : 'opacity-0 scale-75 pointer-events-none'}`}
+          title="ลบโปรไฟล์"
+          tabIndex={-1}
+        >
+          🗑️
+        </button>
+      )}
+
+      {/* Card — slides left on swipe/drag */}
       <motion.div
         style={{ x: swipeX }}
         animate={{ x: swipeX }}
@@ -66,8 +102,11 @@ function SwipeCard({ children, onDelete }: { children: React.ReactNode; onDelete
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
         onClick={confirming ? cancel : undefined}
-        className="relative z-10"
+        className={`relative z-10 ${dragging ? 'cursor-grabbing select-none' : 'cursor-default'}`}
       >
         {children}
       </motion.div>

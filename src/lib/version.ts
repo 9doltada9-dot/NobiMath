@@ -1,7 +1,7 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.9.1'
-export const APP_VERSION_NAME = 'fix: deleted profile returned after sync — add tombstone + cloud delete'
+export const APP_VERSION = '1.10.0'
+export const APP_VERSION_NAME = 'feat: delete on desktop — mouse drag + hover button'
 export const BUILD_DATE = '2026-06-05'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  { version: '1.10.0', name: 'feat: delete on desktop — mouse drag + hover button', date: '2026-06-05' },
   { version: '1.9.1', name: 'fix: deleted profile returned after sync — add tombstone + cloud delete', date: '2026-06-05' },
   { version: '1.9.0', name: 'feat: 3-step delete confirmation — swipe, modal warning, type name to confirm', date: '2026-06-05' },
   { version: '1.8.2', name: 'fix: account_id NOT NULL blocked every profile insert — fix DB + code', date: '2026-06-05' },
