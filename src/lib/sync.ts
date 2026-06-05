@@ -83,7 +83,8 @@ export function migrateProfileIds(): boolean {
 // ─── Deleted-profile tombstone ───────────────────────────────────────────────
 // When a profile is deleted locally we record its ID here so it doesn't come
 // back the next time fullSync pulls from cloud.
-const DELETED_KEY = 'nobi_deleted_profile_ids'
+const DELETED_KEY  = 'nobi_deleted_profile_ids'
+const SYNCED_KEY   = 'nobi_synced_profile_ids'  // profiles known to exist in cloud
 
 export function markProfileDeleted(profileId: string): void {
   if (typeof window === 'undefined') return
@@ -97,6 +98,33 @@ export function markProfileDeleted(profileId: string): void {
 function getDeletedIds(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(DELETED_KEY) ?? '[]')) }
   catch { return new Set() }
+}
+
+function getSyncedIds(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(SYNCED_KEY) ?? '[]')) }
+  catch { return new Set() }
+}
+
+function addSyncedId(id: string): void {
+  if (typeof window === 'undefined') return
+  const ids = Array.from(getSyncedIds())
+  if (!ids.includes(id)) {
+    ids.push(id)
+    localStorage.setItem(SYNCED_KEY, JSON.stringify(ids))
+  }
+}
+
+function removeAllLocalKeysForProfile(profileId: string): void {
+  const keys = [
+    `nobi_history_${profileId}`,
+    `nobi_life_${profileId}`,
+    `nobi_trophies_${profileId}`,
+    `nobi_skills_${profileId}`,
+    `nobi_mastery_${profileId}`,
+    `nobi_streak_${profileId}`,
+    `nobi_last_practice_date_${profileId}`,
+  ]
+  keys.forEach(k => localStorage.removeItem(k))
 }
 
 // ─── Profiles ─────────────────────────────────────────────────────────────────
@@ -386,6 +414,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
   await pushAllProfiles(userId)
   for (const p of localProfiles) {
     await pushAllSessions(p.id, userId)
+    addSyncedId(p.id)  // mark as "known to cloud"
   }
 
   // ── 2. Pull profiles from cloud ─────────────────────────────────────────────
@@ -403,7 +432,21 @@ export async function fullSync(userId: string): Promise<SyncResult> {
 
     // Filter out any deleted profiles from cloud results
     const filteredCloud = cloudProfiles.filter(cp => !deletedIds.has(cp.id))
-    const merged = [...localProfiles]
+    const cloudIds = new Set(filteredCloud.map(cp => cp.id))
+    const syncedIds = getSyncedIds()
+
+    // Start with local profiles, but drop any that were deleted on another device:
+    //   condition: in local + was previously synced to cloud + no longer in cloud + not tombstoned here
+    const merged = localProfiles.filter(lp => {
+      const removedRemotely = syncedIds.has(lp.id) && !cloudIds.has(lp.id) && !deletedIds.has(lp.id)
+      if (removedRemotely) {
+        console.log('[Sync] Profile deleted on another device, removing locally:', lp.id)
+        removeAllLocalKeysForProfile(lp.id)
+        markProfileDeleted(lp.id)  // tombstone so we don't re-push it
+        return false
+      }
+      return true
+    })
 
     for (const cp of filteredCloud) {
       const idx = merged.findIndex(lp => lp.id === cp.id)
@@ -460,6 +503,7 @@ export async function fullSync(userId: string): Promise<SyncResult> {
           opLevels:  cp.opLevels,
         }
         merged.push(clean)
+        addSyncedId(cp.id)  // now known to exist in cloud
         // Restore stats for this new profile
         if (cloudLife)   localStorage.setItem(`nobi_life_${cp.id}`,     JSON.stringify(cloudLife))
         if (cloudTroph)  localStorage.setItem(`nobi_trophies_${cp.id}`, JSON.stringify(cloudTroph))
