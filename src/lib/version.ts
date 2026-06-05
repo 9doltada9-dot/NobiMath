@@ -1,7 +1,7 @@
 // ─── App Version ─────────────────────────────────────────────────────────────
 // แก้ไขโดย _bump.cjs อัตโนมัติทุกครั้งที่รัน _push.bat
-export const APP_VERSION = '1.7.0'
-export const APP_VERSION_NAME = 'feat: guide modal — EXP/level, mission, trophies, tier progression explained'
+export const APP_VERSION = '1.7.1'
+export const APP_VERSION_NAME = 'fix: sync cross-device — add missing DB columns, fix op constraint, pull sessions for all profiles, sync lifetime/trophy/skill stats'
 export const BUILD_DATE = '2026-06-05'
 
 // ─── Changelog ────────────────────────────────────────────────────────────────
@@ -12,6 +12,7 @@ export interface VersionEntry {
 }
 
 export const CHANGELOG: VersionEntry[] = [
+  { version: '1.7.1', name: 'fix: sync cross-device — add missing DB columns, fix op constraint, pull sessions for all profiles, sync lifetime/trophy/skill stats', date: '2026-06-05' },
   { version: '1.7.0', name: 'feat: guide modal — EXP/level, mission, trophies, tier progression explained', date: '2026-06-05' },
   { version: '1.6.1', name: 'style: add home button to practice dashboard and history page', date: '2026-06-05' },
   { version: '1.6.0', name: 'feat: 9 new features — SRS, error classifier, attention SM, warm-up, speed challenge, number bond, contextual, mastery, weekly report', date: '2026-06-05' },

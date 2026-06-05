@@ -155,9 +155,12 @@ export default function HomePage() {
         const { data: freshData } = buildCards()
         setCards(freshData)
         setSyncing(false)
-        if (result.profilesPulled > 0) {
-          setSyncMsg(`☁️ ซิงค์แล้ว (${result.profilesPulled} โปรไฟล์)`)
-          setTimeout(() => setSyncMsg(null), 3000)
+        const syncParts = []
+        if (result.profilesPulled > 0) syncParts.push(`${result.profilesPulled} โปรไฟล์`)
+        if (result.sessionsNewLocal > 0) syncParts.push(`${result.sessionsNewLocal} session ใหม่`)
+        if (syncParts.length > 0) {
+          setSyncMsg(`☁️ ซิงค์แล้ว — ${syncParts.join(', ')}`)
+          setTimeout(() => setSyncMsg(null), 4000)
         }
       }
     }
@@ -172,7 +175,10 @@ export default function HomePage() {
     const { data } = buildCards()
     setCards(data)
     setSyncing(false)
-    setSyncMsg(`✅ ซิงค์สำเร็จ (${result.profilesPulled} โปรไฟล์จาก Cloud)`)
+    const parts = []
+    if (result.profilesPulled > 0) parts.push(`${result.profilesPulled} โปรไฟล์`)
+    if (result.sessionsNewLocal > 0) parts.push(`${result.sessionsNewLocal} session ใหม่`)
+    setSyncMsg(parts.length > 0 ? `✅ ซิงค์สำเร็จ — ${parts.join(', ')}` : '✅ ข้อมูลทันสมัยแล้ว')
     setTimeout(() => setSyncMsg(null), 3000)
   }
 
