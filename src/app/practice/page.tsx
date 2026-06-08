@@ -1171,6 +1171,20 @@ function PracticeScreen({
   const liveStatsRef = useRef<SkillStats>(initialStats)
   const isMission = !!problemQueue?.length
 
+  const localQueueRef = useRef<Problem[]>(
+    problemQueue?.length
+      ? [...problemQueue]
+      : (() => {
+          // Warm-up: 3 easy problems (level-1) + TOTAL_QUESTIONS main problems
+          const warmupLvl = Math.max(1, opLevel(profile, op) - 1)
+          const warmup = Array.from({ length: WARMUP_COUNT }, () =>
+            generateAdaptiveProblem(op, warmupLvl, initialStats))
+          const main = Array.from({ length: TOTAL_QUESTIONS }, () =>
+            generateAdaptiveProblem(op, opLevel(profile, op), initialStats))
+          return [...warmup, ...main]
+        })(),
+  )
+  const [problem, setProblem] = useState<Problem>(() => localQueueRef.current[0])
   const currentOpLevel = opLevel(profile, problem.op ?? op)
   const [questionIndex, setQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<AnswerRecord[]>([])
@@ -1180,16 +1194,6 @@ function PracticeScreen({
   const startTimeRef = useRef(Date.now())
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [exitConfirm, setExitConfirm] = useState(false)
-  const localQueueRef = useRef<Problem[]>(() => {
-    if (problemQueue?.length) return [...problemQueue]
-    // Warm-up: 3 easy problems (level-1) + TOTAL_QUESTIONS main problems
-    const warmupLvl = Math.max(1, opLevel(profile, op) - 1)
-    const warmup = Array.from({ length: WARMUP_COUNT }, () =>
-      generateAdaptiveProblem(op, warmupLvl, initialStats))
-    const main = Array.from({ length: TOTAL_QUESTIONS }, () =>
-      generateAdaptiveProblem(op, opLevel(profile, op), initialStats))
-    return [...warmup, ...main]
-  })()
   const aiAdjustedRef = useRef(false)
   const [aiAdjusted, setAiAdjusted] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
